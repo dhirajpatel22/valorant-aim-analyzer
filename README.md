@@ -72,6 +72,8 @@ This project is being developed as a portfolio project to explore:
 ---
 
 ## Project Structure
+
+```text
 valorant-aim-analyzer/
 │
 ├── data/                       # Training data (images), download from roboflow
@@ -88,6 +90,7 @@ valorant-aim-analyzer/
 ├── requirements.txt
 ├── yolo11n.pt                  # Pre-trained YOLO11 Nano model used for transfer learning
 └── README.md   
+```
 
 ## Disclaimer
 
