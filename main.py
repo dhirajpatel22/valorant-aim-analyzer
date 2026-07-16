@@ -131,7 +131,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
 if __name__ == '__main__':
     # Replace these paths with your actual file locations
-    MY_VIDEO = "C:\\Users\\dhira\\Projects\\valorant-aim-analyzer\\input\\test-clip-3.mp4"
+    MY_VIDEO = "input/test-clip-1.mp4"
     
     MY_ENEMY_MODEL = "runs/detect/valorant_coach/enemy_model_v1/weights/best.pt"
     MY_HEAD_MODEL = "runs/detect/valorant_coach/head_model_v1/weights/best.pt"
