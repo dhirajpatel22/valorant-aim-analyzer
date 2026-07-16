@@ -1,11 +1,12 @@
 import cv2
 from ultralytics import YOLO
 
-def process_valorant_replay(video_path, enemy_model_path):
+def process_valorant_replay(video_path, enemy_model_path, head_model_path):
    
-    # Load your custom trained model (the best.pt file)
-    print(f"Loading custom model from: {enemy_model_path}")
+    # Load trained models (the best.pt file)
+    print(f"Loading enemy model from: {enemy_model_path} and head model from: {head_model_path}")
     enemy_model = YOLO(enemy_model_path)
+    head_model = YOLO(head_model_path)
     
     # Open the video file using OpenCV
     cap = cv2.VideoCapture(video_path)
@@ -14,8 +15,9 @@ def process_valorant_replay(video_path, enemy_model_path):
         print("Error: Could not open video file.")
         return
 
-    # Get the class names your model was trained on
-    class_names = enemy_model.names
+    # Get the class names the models were trained on
+    enemy_class_names = enemy_model.names
+    head_class_names = head_model.names
 
     print("Processing video... Press 'q' to stop.")
     
@@ -52,21 +54,22 @@ def process_valorant_replay(video_path, enemy_model_path):
         # -------------------------------
 
         # Run inference (detection) on the current frame
-        results = enemy_model(frame, conf=0.5, verbose=False)
+        enemy_results = enemy_model(frame, conf=0.5, verbose=False)
         
         # Process the results and draw boxes
-        # The 'results' object contains all the bounding box coordinates
-        for r in results:
+        # The 'enemy_results' object contains all the bounding box coordinates for the enemy model
+        for r in enemy_results:
             boxes = r.boxes
             
             for box in boxes:
                 # Get the coordinates (x1, y1, x2, y2)
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cropped = frame[y1:y2, x1:x2] # Crop the detected enemy region for head detection
                 
                 # Get the confidence score and class ID
                 conf = float(box.conf[0])
                 cls_id = int(box.cls[0])
-                class_name = class_names[cls_id]
+                class_name = enemy_class_names[cls_id]
                 
                 # Assign colors based on the class (BGR format for OpenCV)
                 if class_name == 'enemy':
@@ -82,7 +85,39 @@ def process_valorant_replay(video_path, enemy_model_path):
                 # Draw the label above the rectangle
                 label = f"{class_name} {conf:.2f}"
                 cv2.putText(frame, label, (x1, y1 - 10),cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-        
+
+                #Cropping the detected enemy region for head detection
+                
+                head_results = head_model(cropped, conf=0.3, imgsz= 320, verbose=False)
+
+                for hr in head_results:
+                    for head_box in hr.boxes:
+                        hx1, hy1, hx2, hy2 = map(int, head_box.xyxy[0])
+                       
+                        # Convert crop coordinates back to frame coordinates
+                        hx1 += x1
+                        hx2 += x1
+                        hy1 += y1
+                        hy2 += y1
+
+                        cv2.rectangle(
+                            frame,
+                            (hx1, hy1),
+                            (hx2, hy2),
+                            (0, 0, 255),  # Red
+                            2
+                        )
+
+                        cv2.putText(
+                            frame,
+                            "head",
+                            (hx1, hy1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (0, 0, 255),
+                            2
+                        )
+
         # Display the frame on screen
         cv2.imshow('Valorant AI Coach - Vision Test', frame)
         
@@ -97,6 +132,8 @@ def process_valorant_replay(video_path, enemy_model_path):
 if __name__ == '__main__':
     # Replace these paths with your actual file locations
     MY_VIDEO = "C:\\Users\\dhira\\Projects\\valorant-aim-analyzer\\input\\test-clip-3.mp4"
-    MY_ENEMY_MODEL = "runs/detect/valorant_coach/enemy_model_v1/weights/best.pt"
     
-    process_valorant_replay(MY_VIDEO, MY_ENEMY_MODEL)
+    MY_ENEMY_MODEL = "runs/detect/valorant_coach/enemy_model_v1/weights/best.pt"
+    MY_HEAD_MODEL = "runs/detect/valorant_coach/head_model_v1/weights/best.pt"
+    
+    process_valorant_replay(MY_VIDEO, MY_ENEMY_MODEL, MY_HEAD_MODEL)
