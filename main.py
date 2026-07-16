@@ -1,11 +1,11 @@
 import cv2
 from ultralytics import YOLO
 
-def process_valorant_replay(video_path, model_path):
+def process_valorant_replay(video_path, enemy_model_path):
    
     # Load your custom trained model (the best.pt file)
-    print(f"Loading custom model from: {model_path}")
-    model = YOLO(model_path)
+    print(f"Loading custom model from: {enemy_model_path}")
+    enemy_model = YOLO(enemy_model_path)
     
     # Open the video file using OpenCV
     cap = cv2.VideoCapture(video_path)
@@ -15,7 +15,7 @@ def process_valorant_replay(video_path, model_path):
         return
 
     # Get the class names your model was trained on
-    class_names = model.names
+    class_names = enemy_model.names
 
     print("Processing video... Press 'q' to stop.")
     
@@ -52,7 +52,7 @@ def process_valorant_replay(video_path, model_path):
         # -------------------------------
 
         # Run inference (detection) on the current frame
-        results = model(frame, conf=0.5, verbose=False)
+        results = enemy_model(frame, conf=0.5, verbose=False)
         
         # Process the results and draw boxes
         # The 'results' object contains all the bounding box coordinates
@@ -97,6 +97,6 @@ def process_valorant_replay(video_path, model_path):
 if __name__ == '__main__':
     # Replace these paths with your actual file locations
     MY_VIDEO = "C:\\Users\\dhira\\Projects\\valorant-aim-analyzer\\input\\test-clip-3.mp4"
-    MY_MODEL = "runs/detect/valorant_coach/aim_model_v1/weights/best.pt"
+    MY_ENEMY_MODEL = "runs/detect/valorant_coach/enemy_model_v1/weights/best.pt"
     
-    process_valorant_replay(MY_VIDEO, MY_MODEL)
+    process_valorant_replay(MY_VIDEO, MY_ENEMY_MODEL)
