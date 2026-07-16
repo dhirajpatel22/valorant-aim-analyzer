@@ -90,8 +90,10 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                 
                 head_results = head_model(cropped, conf=0.3, imgsz= 320, verbose=False)
 
+                head_found = False
                 for hr in head_results:
                     for head_box in hr.boxes:
+                        head_found = True
                         hx1, hy1, hx2, hy2 = map(int, head_box.xyxy[0])
                        
                         # Convert crop coordinates back to frame coordinates
@@ -99,6 +101,13 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                         hx2 += x1
                         hy1 += y1
                         hy2 += y1
+
+                        center_x = (hx1 + hx2) // 2
+                        center_y = (hy1 + hy2) // 2
+                        center = (center_x, center_y)
+
+                        # Draw a small circle at the center of the head bounding box
+                        cv2.circle(frame, center, 2, (0, 0, 255), -1)
 
                         cv2.rectangle(
                             frame,
@@ -117,6 +126,25 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                             (0, 0, 255),
                             2
                         )
+                
+                if not head_found:
+                    enemy_width = x2 - x1
+                    enemy_height = y2 - y1
+
+                    # Estimated head center
+                    head_center_x = x1 + enemy_width // 2
+                    head_center_y = y1 + int(enemy_height * 0.13)
+
+                    # Estimated head box size
+                    head_box_size = int(enemy_width * 0.30)
+
+                    hx1 = head_center_x - head_box_size // 2
+                    hy1 = head_center_y - head_box_size // 2
+                    hx2 = head_center_x + head_box_size // 2
+                    hy2 = head_center_y + head_box_size // 2
+
+                    cv2.rectangle(frame, (hx1, hy1), (hx2, hy2), (255, 0, 255), 2)
+                    cv2.putText(frame, "head (ESTIMATE)", (hx1, hy1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
 
         # Display the frame on screen
         cv2.imshow('Valorant AI Coach - Vision Test', frame)
