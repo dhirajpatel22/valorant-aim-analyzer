@@ -81,9 +81,13 @@ valorant-aim-analyzer/
 ├── runs/                       # Trained YOLO model
 │ └── detect/
 │   └── valorant_coach/
-│       └── aim_model_v1/
+│       └── enemy_model_v1/     # Enemy detection model
 │            └── weights/
 │               ├── best.pt     # Best-performing trained model
+│                └── last.pt
+│       └── head_model_v1/      # Head detection model
+│            └── weights/
+│               ├── best.pt     
 │                └── last.pt
 ├── train.py                    # Model training script
 ├── main.py                     # Video processing pipeline
