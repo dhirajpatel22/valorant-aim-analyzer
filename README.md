@@ -44,6 +44,7 @@ This project is being developed as a portfolio project to explore:
 🚧 **Aim Analysis**
 - Measuring how quickly and accurately the player moves their crosshair onto targets.
 - Analyzing flicks, tracking, and micro-adjustments.
+- Compute crosshair placement score & measure reaction time, draw crosshair path on screen 
 
 ---
 
