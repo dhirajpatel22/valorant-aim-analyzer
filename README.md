@@ -30,16 +30,13 @@ This project is being developed as a portfolio project to explore:
 - Detects the player's crosshair position in each frame.
 - Tracks crosshair movement during gameplay.
 
+✅ **Head Detection**
+- Training a custom computer vision model to identify enemy head locations.
+- Uses detected head positions to evaluate crosshair placement accuracy (vertical crosshair accuracy)
+
 ---
 
 ## Features In Progress
-
-🚧 **Head Detection**
-- Training a custom computer vision model to identify enemy head locations.
-- Uses detected head positions to evaluate:
-  - Crosshair placement accuracy
-  - Distance between crosshair and target head
-  - Aim adjustment efficiency
 
 🚧 **Aim Analysis**
 - Measuring how quickly and accurately the player moves their crosshair onto targets.
