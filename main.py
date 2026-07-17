@@ -2,11 +2,11 @@ import cv2
 from ultralytics import YOLO
 
 def draw_crosshair(frame):
-    """Draws a crosshair at the center of the given frame. Does not return anything; modifies the frame in place."""
+    """Draws a crosshair at the center of the given frame. Modifies the frame in place. Returns the center coordinates as a tuple."""
     height, width, _ = frame.shape
 
     center_x = (width // 2) - 1  # Compensate for crosshair being offset by 1 pixel
-    center_y = (height // 2) - 1
+    center_y = (height // 2) - 1 # + 17 # temp mac adjustment
 
     box_size = 3
 
@@ -20,10 +20,11 @@ def draw_crosshair(frame):
 
     cv2.circle(frame, (center_x, center_y), 1, (0, 255, 0), -1) #Crosshair center
 
-def draw_enemy_box(frame, box, enemy_class_names):
+    return (center_x, center_y) 
+
+def draw_enemy(frame, box, enemy_class_names):
     """Draws a bounding box around the detected enemy. Does not return anything; modifies the frame in place."""
     x1, y1, x2, y2 = map(int, box.xyxy[0])
-    cropped = frame[y1:y2, x1:x2] # Crop the detected enemy region for head detection
     
     # Get the confidence score and class ID
     conf = float(box.conf[0])
@@ -43,8 +44,8 @@ def draw_enemy_box(frame, box, enemy_class_names):
     label = f"{class_name} {conf:.2f}"
     cv2.putText(frame, label, (x1, y1 - 10),cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-def draw_head_box(frame, head_box, x1, y1, x2, y2):
-    """Draws a bounding box around the detected head. Does not return anything; modifies the frame in place."""
+def draw_head(frame, head_box, x1, y1, x2, y2):
+    """Draws a bounding box around the detected head. Modifies the frame in place. Returns the center coordinates of the head bounding box as a tuple and the box coordinates as a tuple."""
     hx1, hy1, hx2, hy2 = map(int, head_box.xyxy[0])
                        
    # Convert crop coordinates back to frame coordinates
@@ -52,6 +53,8 @@ def draw_head_box(frame, head_box, x1, y1, x2, y2):
     hx2 += x1
     hy1 += y1
     hy2 += y1
+
+    box_coordinates = (hx1, hy1, hx2, hy2)
 
     center_x = (hx1 + hx2) // 2
     center_y = (hy1 + hy2) // 2
@@ -63,8 +66,10 @@ def draw_head_box(frame, head_box, x1, y1, x2, y2):
     cv2.rectangle(frame, (hx1, hy1), (hx2, hy2), (0, 0, 255), 2)
     cv2.putText(frame, "head", (hx1, hy1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255),2)
 
-def estimate_head_box(frame, enemy_box):
-    """Estimates the head bounding box based on the enemy bounding box. Does not return anything; modifies the frame in place."""
+    return center, box_coordinates
+
+def draw_estimate_head(frame, enemy_box):
+    """Estimates the head bounding box based on the enemy bounding box. Modifies the frame in place. Returns the estimated head center coordinates as a tuple and the estimated head box coordinates as a tuple."""
     x1, y1, x2, y2 = enemy_box
     enemy_width = x2 - x1
     enemy_height = y2 - y1
@@ -84,6 +89,65 @@ def estimate_head_box(frame, enemy_box):
     cv2.rectangle(frame, (hx1, hy1), (hx2, hy2), (255, 0, 255), 2)
     cv2.putText(frame, "head (ESTIMATE)", (hx1, hy1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
 
+    return (head_center_x, head_center_y), (hx1, hy1, hx2, hy2)  # Return the estimated head center coordinates and box coordinates
+
+def display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2):
+    """Calculates the vertical crosshair error and displays it on the frame. Displays aim feedback on frame. Modifies the frame in place. Returns nothing."""
+    vertical_crosshair_error = head_center_y - crosshair_y # In OpenCV, (0,0) is at the top-left corner, 
+                                                           # so a positive value means the head is below the crosshair
+    if hy1 <= crosshair_y <= hy2:
+        cv2.putText(frame, f"Vertical Crosshair Error: {vertical_crosshair_error}px", 
+                                (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                    
+    else:
+        cv2.putText(frame, 
+                    f"Vertical Crosshair Error: {vertical_crosshair_error}px (OUT OF BOUNDS)", 
+                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        
+    # Create transparent overlay for arrow
+    overlay = frame.copy()
+
+    # Put arrow to the right of crosshair
+    arrow_x = crosshair_x + 40
+    arrow_length = 80  # cap arrow size
+
+
+    if hy1 <= crosshair_y <= hy2:
+        cv2.putText(overlay, "GOOD", 
+                    (arrow_x, 
+                    crosshair_y + 10), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 
+                    1, 
+                    (0, 255, 0),
+                    2)
+    elif crosshair_y < hy1 and vertical_crosshair_error > 0:
+        # Crosshair too high
+        cv2.putText(
+                    overlay,
+                    "TOO HIGH",
+                    (crosshair_x + 40, crosshair_y + 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 0, 255),
+                    2
+                    )
+
+    elif crosshair_y > hy2 and vertical_crosshair_error < 0:
+         # Crosshair too low
+        cv2.putText(
+                    overlay,
+                    "TOO LOW",
+                    (crosshair_x + 40, crosshair_y + 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 0, 255),
+                    2
+                    )
+
+    # Blend the overlay
+    transparency = 0.6
+    cv2.addWeighted(overlay, transparency, frame, 1-transparency, 0, frame)
+        
 def process_valorant_replay(video_path, enemy_model_path, head_model_path):
    
     # Load trained models (the best.pt file)
@@ -114,7 +178,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
             print("End of video reached.")
             break
         
-        draw_crosshair(frame)
+        (crosshair_x, crosshair_y) = draw_crosshair(frame)
 
         # Run inference (detection) on the current frame
         enemy_results = enemy_model(frame, conf=0.5, verbose=False)
@@ -124,23 +188,58 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
         for r in enemy_results:
             boxes = r.boxes
             
+            closest_head = None
+            closest_head_box = None
+            closest_distance = float('inf')
+
             for box in boxes:
                 # Get the coordinates (x1, y1, x2, y2)
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
+
                 cropped = frame[y1:y2, x1:x2] # Crop the detected enemy region for head detection
-                draw_enemy_box(frame, box, enemy_class_names)
+                if cropped.size == 0:
+                    continue  # Skip if the cropped region is empty
+
+                draw_enemy(frame, box, enemy_class_names)
 
                 head_results = head_model(cropped, conf=0.3, imgsz= 320, verbose=False)
                 
                 head_found = False
+
+                best_head_box = None
+                best_head_conf = 0.0
+
                 for hr in head_results:
                     for head_box in hr.boxes:
-                        head_found = True
-                        draw_head_box(frame, head_box, x1, y1, x2, y2)
-                
-                if not head_found:
-                    estimate_head_box(frame, (x1, y1, x2, y2))
+                        conf = float(head_box.conf[0])
+                        if conf > best_head_conf:
+                            best_head_conf = conf
+                            best_head_box = head_box
+                        
+                #If head detected 
+                if best_head_box is not None:
+                    head_found = True
+                    (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_head(frame, head_box, x1, y1, x2, y2)
 
+                if not head_found:
+                    (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_estimate_head(frame, (x1, y1, x2, y2))
+
+                #Find closest head to crosshair
+                distance = ((head_center_x - crosshair_x)**2 + 
+                (head_center_y - crosshair_y)**2) ** 0.5
+                
+                #Keep the closest head
+                if distance < closest_distance:
+                    closest_distance = distance
+                    closest_head = (head_center_x, head_center_y)
+                    closest_head_box = (hx1, hy1, hx2, hy2)
+
+            if closest_head is not None:
+                head_center_x, head_center_y = closest_head
+                hx1, hy1, hx2, hy2 = closest_head_box
+
+                # Calculate the vertical crosshair error & display it on the frame
+                display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
 
         # Display the frame on screen
         cv2.imshow('Valorant AI Coach - Vision Test', frame)
@@ -154,7 +253,6 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    # Replace these paths with your actual file locations
     MY_VIDEO = "input/test-clip-1.mp4"
     
     MY_ENEMY_MODEL = "runs/detect/valorant_coach/enemy_model_v1/weights/best.pt"
