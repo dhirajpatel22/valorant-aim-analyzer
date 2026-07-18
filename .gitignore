@@ -5,6 +5,8 @@ input/test-clip-3.mp4
 
 data/val_images_13k
 data/valorant-images
+data/head_dataset
+data/enemy_and_head
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

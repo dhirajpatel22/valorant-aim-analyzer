@@ -30,20 +30,18 @@ This project is being developed as a portfolio project to explore:
 - Detects the player's crosshair position in each frame.
 - Tracks crosshair movement during gameplay.
 
+✅ **Head Detection**
+- Training a custom computer vision model to identify enemy head locations.
+- Uses detected head positions to evaluate crosshair placement accuracy (vertical crosshair accuracy)
+
 ---
 
 ## Features In Progress
 
-🚧 **Head Detection**
-- Training a custom computer vision model to identify enemy head locations.
-- Uses detected head positions to evaluate:
-  - Crosshair placement accuracy
-  - Distance between crosshair and target head
-  - Aim adjustment efficiency
-
 🚧 **Aim Analysis**
 - Measuring how quickly and accurately the player moves their crosshair onto targets.
 - Analyzing flicks, tracking, and micro-adjustments.
+- Compute crosshair placement score & measure reaction time, draw crosshair path on screen 
 
 ---
 
@@ -81,9 +79,13 @@ valorant-aim-analyzer/
 ├── runs/                       # Trained YOLO model
 │ └── detect/
 │   └── valorant_coach/
-│       └── aim_model_v1/
+│       └── enemy_model_v1/     # Enemy detection model
 │            └── weights/
 │               ├── best.pt     # Best-performing trained model
+│                └── last.pt
+│       └── head_model_v1/      # Head detection model
+│            └── weights/
+│               ├── best.pt     
 │                └── last.pt
 ├── train.py                    # Model training script
 ├── main.py                     # Video processing pipeline
