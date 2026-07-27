@@ -1,5 +1,9 @@
 import cv2
 from ultralytics import YOLO
+import easyocr
+from difflib import SequenceMatcher 
+
+reader = easyocr.Reader(['en'], gpu=True)
 
 def draw_crosshair(frame):
     """Draws a crosshair at the center of the given frame. Modifies the frame in place. Returns the center coordinates as a tuple."""
@@ -147,14 +151,62 @@ def display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshai
     # Blend the overlay
     transparency = 0.6
     cv2.addWeighted(overlay, transparency, frame, 1-transparency, 0, frame)
+
+def crop_kill_frame(frame):
+    """ Crops the frame to focus on the kill feed area. Returns the cropped frame and the top-left coordinates of the crop in the original frame. """
+    h, w, _ = frame.shape
+    x1 = int(w * 0.78)
+    y1 = int(h * 0.08)
+    x2 = w - 20
+    y2 = int(h * 0.35)
+
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2) # Draw rectangle on original frame for visualization
+
+    return frame[y1:y2, x1:x2], (x1, y1)
+
+def preprocess_kill_feed(crop):
+    """Preprocesses the cropped kill feed for OCR. Returns a binary image suitable for OCR."""
+    return cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)  # Resize to double the size for better OCR accuracy
+
+def ocr_kill_feed(frame):
+    """Performs OCR on the kill feed area of the frame. Returns a list of detected text rows with their confidence and coordinates."""
+    crop, (ox, oy) = crop_kill_frame(frame)
+    if crop.size == 0:
+        return []
+
+    proc = preprocess_kill_feed(crop)
+    results = reader.readtext(proc, detail=1, paragraph=False)
+    rows = []
+
+    for box, text, conf in results:
+        text = text.strip()
+        if conf < 0.35 or len(text) < 2:
+            continue
+        # box is 4 points, use top left y to group rows
+
+        y = box[0][1]  # y-coordinate of the top-left corner
+        x = box[0][0]  # x-coordinate of the top-left corner
+
+        rows.append({'text': text, 'conf': conf, 'x': x + ox, 'y': y + oy})  # Adjust coordinates to original frame
+        # Draw the bounding box on the original frame for visualization
+        scale = 3.0
+
+        x1 = int(box[0][0] / scale) + ox
+        y1 = int(box[0][1] / scale) + oy
+        x2 = int(box[2][0] / scale) + ox
+        y2 = int(box[2][1] / scale) + oy
         
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2) 
+
+    return rows
+
 def process_valorant_replay(video_path, enemy_model_path, head_model_path):
    
     # Load trained models (the best.pt file)
     print(f"Loading enemy model from: {enemy_model_path} and head model from: {head_model_path}")
     enemy_model = YOLO(enemy_model_path)
     head_model = YOLO(head_model_path)
-    
+
     # Open the video file using OpenCV
     cap = cv2.VideoCapture(video_path)
     
@@ -249,6 +301,10 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                     # Calculate the vertical crosshair error & display it on the frame
                     display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
 
+            ocr_results = ocr_kill_feed(frame)
+            print(f"OCR Results: {ocr_results}")  # Print OCR results to console for debugging
+            print("-----------------------------") 
+
             # Display the frame on screen
             cv2.imshow('Valorant AI Coach - Vision Test', frame)
             frame_idx += step  # Move to the next frame
@@ -271,7 +327,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    MY_VIDEO = "input/test-clip-1.mp4"
+    MY_VIDEO = "input/test-clip-4.mp4"
     
     MY_ENEMY_MODEL = "runs/detect/valorant_coach/enemy_model_v1/weights/best.pt"
     MY_HEAD_MODEL = "runs/detect/valorant_coach/head_model_v1/weights/best.pt"
