@@ -6,7 +6,7 @@ def draw_crosshair(frame):
     height, width, _ = frame.shape
 
     center_x = (width // 2) - 1  # Compensate for crosshair being offset by 1 pixel
-    center_y = (height // 2) - 1 # + 17 # temp mac adjustment
+    center_y = (height // 2) - 1  #+ 17 # temp mac adjustment
 
     box_size = 3
 
@@ -22,8 +22,8 @@ def draw_crosshair(frame):
 
     return (center_x, center_y) 
 
-def draw_estimate_head(frame, enemy_box):
-    """Estimates the head bounding box based on the enemy bounding box. Modifies the frame in place. Returns the estimated head center coordinates as a tuple and the estimated head box coordinates as a tuple."""
+def get_estimate_head(enemy_box):
+    """Estimates the head bounding box based on the enemy bounding box. Does NOT modify the frame. Returns the estimated head center coordinates as a tuple and the estimated head box coordinates as a tuple."""
     x1, y1, x2, y2 = enemy_box
     enemy_width = x2 - x1
     enemy_height = y2 - y1
@@ -39,9 +39,6 @@ def draw_estimate_head(frame, enemy_box):
     hy1 = head_center_y - head_box_size // 2
     hx2 = head_center_x + head_box_size // 2
     hy2 = head_center_y + head_box_size // 2
-    
-    cv2.rectangle(frame, (hx1, hy1), (hx2, hy2), (255, 0, 255), 2)
-    cv2.putText(frame, "head (ESTIMATE)", (hx1, hy1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
 
     return (head_center_x, head_center_y), (hx1, hy1, hx2, hy2)  # Return the estimated head center coordinates and box coordinates
 
@@ -60,7 +57,7 @@ def draw_detection(frame, box, class_names):
     if class_name == 'enemy':
         color = (0, 165, 255) # Orange
     elif class_name == 'head':
-        color = (255, 0, 255) # Magenta
+        color = (0, 0, 255) # Red
         head_center_x = (x1 + x2) // 2
         head_center_y = (y1 + y2) // 2
     else:
@@ -175,32 +172,73 @@ def process_valorant_replay(video_path, model_path):
             closest_head_box = None
             closest_distance = float('inf')
 
-            for box in boxes:
+            enemy_boxes = []
+            head_boxes = []
+
+            for box in boxes: # Loop over each detected box
                 # Get the coordinates (x1, y1, x2, y2)
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
 
                 cls_id = int(box.cls[0])
                 class_name = class_names[cls_id]
 
-                (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_detection(frame, box, class_names)
+                if class_name == 'enemy':
+                    enemy_boxes.append(box)
+                elif class_name == 'head':
+                    head_boxes.append(box)
+            
 
-                if class_name == 'head':
-                    #Find closest head to crosshair
-                    distance = ((head_center_x - crosshair_x)**2 + 
-                    (head_center_y - crosshair_y)**2) ** 0.5
-                    
-                    #Keep the closest head
-                    if distance < closest_distance:
-                        closest_distance = distance
-                        closest_head = (head_center_x, head_center_y)
-                        closest_head_box = (hx1, hy1, hx2, hy2)
+            for enemy in enemy_boxes: # Loop over each ENEMY box
+                
+                draw_detection(frame, enemy, class_names)
+                ex1, ey1, ex2, ey2 = map(int, enemy.xyxy[0])
 
-                if closest_head is not None:
-                    head_center_x, head_center_y = closest_head
-                    hx1, hy1, hx2, hy2 = closest_head_box
+                enemy_box = (ex1, ey1, ex2, ey2)
+                (head_center_x, head_center_y), head_box = get_estimate_head(enemy_box)
 
-                    # Calculate the vertical crosshair error & display it on the frame
-                    display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
+                best_head = None
+                for head in head_boxes: # Loop over each HEAD box
+                    hx1, hy1, hx2, hy2 = map(int, head.xyxy[0])
+
+                    center_x = (hx1 + hx2) // 2
+                    center_y = (hy1 + hy2) // 2
+
+                    if ex1 <= center_x <= ex2 and ey1 <= center_y <= ey2:
+
+                        best_head = head
+                        break
+                
+                if best_head is not None:
+                    (head_center_x, head_center_y), head_box = draw_detection(
+                        frame,
+                        best_head,
+                        class_names
+                    )
+                else:
+                    hx1, hy1, hx2, hy2 = head_box
+
+                    cv2.rectangle(frame, (hx1, hy1), (hx2, hy2), (255,0,255), 2)
+                    cv2.putText(frame,
+                                "head (ESTIMATE)",
+                                (hx1, hy1-10),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5,
+                                (255,0,255),
+                                2)
+
+                distance = ((head_center_x - crosshair_x) ** 2 + (head_center_y - crosshair_y) ** 2) ** 0.5
+
+                if distance < closest_distance:
+                    closest_distance = distance
+                    closest_head = (head_center_x, head_center_y)
+                    closest_head_box = head_box
+
+            if closest_head is not None:
+                head_center_x, head_center_y = closest_head
+                hx1, hy1, hx2, hy2 = closest_head_box
+
+                # Calculate the vertical crosshair error & display it on the frame
+                display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
 
         # Display the frame on screen
         cv2.imshow('Valorant AI Coach - Vision Test', frame)
@@ -214,7 +252,7 @@ def process_valorant_replay(video_path, model_path):
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    MY_VIDEO = "input/test-clip-3.mp4"
+    MY_VIDEO = "input/test-clip-2.mp4"
     MY_MODEL = "runs/detect/valorant_coach/enemy_and_head_model_v1/weights/best.pt"
  
     
