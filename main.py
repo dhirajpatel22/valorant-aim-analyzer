@@ -167,86 +167,104 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
     head_class_names = head_model.names
 
     print("Processing video... Press 'q' to stop.")
+
+    paused = False  # Variable to track pause state
+    frame_idx = 0  # Variable to track the current frame index
+    step = 1  # Variable to control frame stepping
+    rewind_step = 30  # Number of frames to rewind 
+    ff_step = 30  # Number of frames to fast forward 
     
     # Loop through the video frame by frame
     while True:
-        # ret is a boolean that is True if the frame was read correctly
-        ret, frame = cap.read()
-        
-        # If ret is False, we've reached the end of the video
-        if not ret:
-            print("End of video reached.")
-            break
-        
-        (crosshair_x, crosshair_y) = draw_crosshair(frame)
 
-        # Run inference (detection) on the current frame
-        enemy_results = enemy_model(frame, conf=0.5, verbose=False)
-        
-        # Process the results and draw boxes
-        # The 'enemy_results' object contains all the bounding box coordinates for the enemy model
-        for r in enemy_results:
-            boxes = r.boxes
+        if not paused:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)  # Set the current frame position
+            ret, frame = cap.read()  # ret is a boolean that is True if the frame was read correctly
+
+            # If ret is False, we've reached the end of the video
+            if not ret:
+                print("End of video reached.")
+                break
             
-            closest_head = None
-            closest_head_box = None
-            closest_distance = float('inf')
+            (crosshair_x, crosshair_y) = draw_crosshair(frame)
 
-            for box in boxes:
-                # Get the coordinates (x1, y1, x2, y2)
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-
-                cropped = frame[y1:y2, x1:x2] # Crop the detected enemy region for head detection
-                if cropped.size == 0:
-                    continue  # Skip if the cropped region is empty
-
-                draw_enemy(frame, box, enemy_class_names)
-
-                head_results = head_model(cropped, conf=0.3, imgsz= 320, verbose=False)
+            # Run inference (detection) on the current frame
+            enemy_results = enemy_model(frame, conf=0.5, verbose=False)
+            
+            # Process the results and draw boxes
+            # The 'enemy_results' object contains all the bounding box coordinates for the enemy model
+            for r in enemy_results:
+                boxes = r.boxes
                 
-                head_found = False
+                closest_head = None
+                closest_head_box = None
+                closest_distance = float('inf')
 
-                best_head_box = None
-                best_head_conf = 0.0
+                for box in boxes:
+                    # Get the coordinates (x1, y1, x2, y2)
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                for hr in head_results:
-                    for head_box in hr.boxes:
-                        conf = float(head_box.conf[0])
-                        if conf > best_head_conf:
-                            best_head_conf = conf
-                            best_head_box = head_box
-                        
-                #If head detected 
-                if best_head_box is not None:
-                    head_found = True
-                    (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_head(frame, head_box, x1, y1, x2, y2)
+                    cropped = frame[y1:y2, x1:x2] # Crop the detected enemy region for head detection
+                    if cropped.size == 0:
+                        continue  # Skip if the cropped region is empty
 
-                if not head_found:
-                    (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_estimate_head(frame, (x1, y1, x2, y2))
+                    draw_enemy(frame, box, enemy_class_names)
 
-                #Find closest head to crosshair
-                distance = ((head_center_x - crosshair_x)**2 + 
-                (head_center_y - crosshair_y)**2) ** 0.5
-                
-                #Keep the closest head
-                if distance < closest_distance:
-                    closest_distance = distance
-                    closest_head = (head_center_x, head_center_y)
-                    closest_head_box = (hx1, hy1, hx2, hy2)
+                    head_results = head_model(cropped, conf=0.3, imgsz= 320, verbose=False)
+                    
+                    head_found = False
 
-            if closest_head is not None:
-                head_center_x, head_center_y = closest_head
-                hx1, hy1, hx2, hy2 = closest_head_box
+                    best_head_box = None
+                    best_head_conf = 0.0
 
-                # Calculate the vertical crosshair error & display it on the frame
-                display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
+                    for hr in head_results:
+                        for head_box in hr.boxes:
+                            conf = float(head_box.conf[0])
+                            if conf > best_head_conf:
+                                best_head_conf = conf
+                                best_head_box = head_box
+                            
+                    #If head detected 
+                    if best_head_box is not None:
+                        head_found = True
+                        (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_head(frame, head_box, x1, y1, x2, y2)
 
-        # Display the frame on screen
-        cv2.imshow('Valorant AI Coach - Vision Test', frame)
-        
-        # Press 'q' to quit early
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+                    if not head_found:
+                        (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_estimate_head(frame, (x1, y1, x2, y2))
+
+                    #Find closest head to crosshair
+                    distance = ((head_center_x - crosshair_x)**2 + 
+                    (head_center_y - crosshair_y)**2) ** 0.5
+                    
+                    #Keep the closest head
+                    if distance < closest_distance:
+                        closest_distance = distance
+                        closest_head = (head_center_x, head_center_y)
+                        closest_head_box = (hx1, hy1, hx2, hy2)
+
+                if closest_head is not None:
+                    head_center_x, head_center_y = closest_head
+                    hx1, hy1, hx2, hy2 = closest_head_box
+
+                    # Calculate the vertical crosshair error & display it on the frame
+                    display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
+
+            # Display the frame on screen
+            cv2.imshow('Valorant AI Coach - Vision Test', frame)
+            frame_idx += step  # Move to the next frame
+
+        key = cv2.waitKey(0 if paused else 1) & 0xFF
+
+        if key == ord(' '):
+            paused = not paused
+        elif key == 2:  # Left arrow key
+            frame_idx = max(0, frame_idx - rewind_step)  # Rewind
+            #paused = True  # Pause after rewinding
+        elif key == 3:  # Right arrow key
+            frame_idx += ff_step  # Fast forward
+            #paused = True  # Pause after fast forwarding
+        elif key == ord('q'):
+            break  # Quit the loop
 
     # Clean up when done
     cap.release()
