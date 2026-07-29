@@ -176,7 +176,7 @@ def ocr_kill_feed(frame):
 
     proc = preprocess_kill_feed(crop)
     results = reader.readtext(proc, detail=1, paragraph=False)
-    rows = []
+    texts = []
 
     for box, text, conf in results:
         text = text.strip()
@@ -187,7 +187,7 @@ def ocr_kill_feed(frame):
         y = box[0][1]  # y-coordinate of the top-left corner
         x = box[0][0]  # x-coordinate of the top-left corner
 
-        rows.append({'text': text, 'conf': conf, 'x': x + ox, 'y': y + oy})  # Adjust coordinates to original frame
+        texts.append({'text': text, 'conf': conf, 'x': x + ox, 'y': y + oy})  # Adjust coordinates to original frame
         # Draw the bounding box on the original frame for visualization
         scale = 3.0
 
@@ -198,7 +198,41 @@ def ocr_kill_feed(frame):
         
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2) 
 
-    return rows
+    return texts
+
+def group_rows(detections, y_threshold=20):
+    """ Groups detected text rows based on their y-coordinates. Returns a list of merged rows with their average y-coordinate and minimum x-coordinate. """
+    if not detections:
+        return []
+
+    # Sort top-to-bottom
+    detections = sorted(detections, key=lambda r: r["y"])
+
+    groups = [[detections[0]]]
+
+    for row in detections[1:]:
+        # Compare to the average y of the current group
+        avg_y = sum(r["y"] for r in groups[-1]) / len(groups[-1])
+
+        if abs(row["y"] - avg_y) <= y_threshold:
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+
+    merged = []
+
+    for group in groups:
+        # Sort left-to-right
+        group.sort(key=lambda r: r["x"])
+
+        merged.append({
+            "text": [r["text"] for r in group],
+            "y": int(sum(r["y"] for r in group) / len(group)),
+            "x": min(r["x"] for r in group),
+            "parts": group      # optional: keep original pieces
+        })
+
+    return merged
 
 def process_valorant_replay(video_path, enemy_model_path, head_model_path):
    
@@ -301,9 +335,10 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                     # Calculate the vertical crosshair error & display it on the frame
                     display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
 
-            ocr_results = ocr_kill_feed(frame)
-            print(f"OCR Results: {ocr_results}")  # Print OCR results to console for debugging
-            print("-----------------------------") 
+            ocr_detections = ocr_kill_feed(frame)
+            kill_feed_rows = group_rows(ocr_detections)
+            print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed_rows}")
+            print("--------------------------------------------------")
 
             # Display the frame on screen
             cv2.imshow('Valorant AI Coach - Vision Test', frame)
