@@ -8,6 +8,8 @@ data/valorant-images
 data/head_dataset
 data/enemy_and_head
 
+.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
