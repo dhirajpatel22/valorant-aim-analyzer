@@ -3,6 +3,47 @@ from ultralytics import YOLO
 import easyocr
 from difflib import SequenceMatcher 
 
+from dataclasses import dataclass, field
+from typing import List
+
+@dataclass
+class KillFeedDetection:
+    """Represents a single OCR detection in the kill feed."""
+    text: str
+    conf: float
+    x: int
+    y: int
+    timestamp: float = 0.0  
+
+@dataclass
+class KillFeedRow:
+    """Represents a row of detections in the kill feed."""
+    text: list
+    y: int
+    x: int
+    parts: list = field(default_factory=list)
+    timestamp: float = 0.0  
+
+@dataclass
+class KillFeed:
+    """Represents the entire kill feed, which consists of multiple rows."""
+    rows: List[KillFeedRow] = field(default_factory=list)
+
+    def add_row(self, row: KillFeedRow):
+        self.rows.append(row)
+
+    def remove_old_rows(self, current_time: float, max_age: float = 5.0):
+        self.rows = [row for row in self.rows if current_time - row.timestamp <= max_age]
+
+    def get_latest_row(self):
+        if self.rows:
+            return max(self.rows, key=lambda row: row.timestamp)
+        return None
+
+    def clear(self):
+        self.rows.clear()
+
+
 reader = easyocr.Reader(['en'], gpu=True)
 
 def draw_crosshair(frame):
@@ -169,14 +210,14 @@ def preprocess_kill_feed(crop):
     return cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)  # Resize to double the size for better OCR accuracy
 
 def ocr_kill_feed(frame):
-    """Performs OCR on the kill feed area of the frame. Returns a list of detected text rows with their confidence and coordinates."""
+    """Performs OCR on the kill feed area of the frame. Returns a list of KillFeedDetection objects."""
     crop, (ox, oy) = crop_kill_frame(frame)
     if crop.size == 0:
         return []
 
     proc = preprocess_kill_feed(crop)
     results = reader.readtext(proc, detail=1, paragraph=False)
-    texts = []
+    detections = []
 
     for box, text, conf in results:
         text = text.strip()
@@ -187,7 +228,9 @@ def ocr_kill_feed(frame):
         y = box[0][1]  # y-coordinate of the top-left corner
         x = box[0][0]  # x-coordinate of the top-left corner
 
-        texts.append({'text': text, 'conf': conf, 'x': x + ox, 'y': y + oy})  # Adjust coordinates to original frame
+        detection = KillFeedDetection(text=text, conf=conf, x=x + ox, y=y + oy)
+
+        detections.append(detection)  # Adjust coordinates to original frame
         # Draw the bounding box on the original frame for visualization
         scale = 3.0
 
@@ -198,41 +241,43 @@ def ocr_kill_feed(frame):
         
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2) 
 
-    return texts
+    return detections
 
 def group_rows(detections, y_threshold=20):
-    """ Groups detected text rows based on their y-coordinates. Returns a list of merged rows with their average y-coordinate and minimum x-coordinate. """
+    """ Groups KillFeedDetection objects based on their y-coordinates. Returns a KillFeed object containing grouped KillFeedRow objects."""
     if not detections:
-        return []
+        empty_kill_feed = KillFeed()
+        return empty_kill_feed
 
     # Sort top-to-bottom
-    detections = sorted(detections, key=lambda r: r["y"])
+    detections = sorted(detections, key=lambda r: r.y)
 
     groups = [[detections[0]]]
 
     for row in detections[1:]:
         # Compare to the average y of the current group
-        avg_y = sum(r["y"] for r in groups[-1]) / len(groups[-1])
+        avg_y = sum(r.y for r in groups[-1]) / len(groups[-1])
 
-        if abs(row["y"] - avg_y) <= y_threshold:
+        if abs(row.y - avg_y) <= y_threshold:
             groups[-1].append(row)
         else:
             groups.append([row])
 
-    merged = []
+    kill_feed = KillFeed()
 
     for group in groups:
         # Sort left-to-right
-        group.sort(key=lambda r: r["x"])
+        group.sort(key=lambda r: r.x)
 
-        merged.append({
-            "text": [r["text"] for r in group],
-            "y": int(sum(r["y"] for r in group) / len(group)),
-            "x": min(r["x"] for r in group),
-            "parts": group      # optional: keep original pieces
-        })
+        row = KillFeedRow(
+            text=[r.text for r in group],
+            y=int(sum(r.y for r in group) / len(group)),
+            x=min(r.x for r in group),
+            parts=group
+        )
+        kill_feed.add_row(row)
 
-    return merged
+    return kill_feed
 
 def process_valorant_replay(video_path, enemy_model_path, head_model_path):
    
@@ -336,8 +381,8 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                     display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
 
             ocr_detections = ocr_kill_feed(frame)
-            kill_feed_rows = group_rows(ocr_detections)
-            print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed_rows}")
+            kill_feed = group_rows(ocr_detections)
+            print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed.rows}")
             print("--------------------------------------------------")
 
             # Display the frame on screen
