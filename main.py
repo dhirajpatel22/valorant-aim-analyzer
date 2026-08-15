@@ -13,7 +13,7 @@ class KillFeedDetection:
     conf: float
     x: int
     y: int
-    timestamp: float = 0.0  
+    frame_idx: int 
 
 @dataclass
 class KillFeedRow:
@@ -21,28 +21,57 @@ class KillFeedRow:
     text: list
     y: int
     x: int
+    frame_idx: int
     parts: list = field(default_factory=list)
-    timestamp: float = 0.0  
-
+     
 @dataclass
 class KillFeed:
     """Represents the entire kill feed, which consists of multiple rows."""
     rows: List[KillFeedRow] = field(default_factory=list)
 
-    def add_row(self, row: KillFeedRow):
-        self.rows.append(row)
+    def __post_init__(self):
+        self.rows.sort(key=lambda r: r.y)  # Ensure rows are sorted by their y-coordinate
 
-    def remove_old_rows(self, current_time: float, max_age: float = 5.0):
-        self.rows = [row for row in self.rows if current_time - row.timestamp <= max_age]
+    def __str__(self):
+        if not self.rows:
+            return "KillFeed: <empty>"
+
+        lines = ["=" * 60, "KILL FEED", "=" * 60]
+
+        for i, row in enumerate(self.rows):
+            text = " | ".join(
+                getattr(t, "text", str(t)) for t in row.text
+            )
+
+            lines.append(
+                f"Row {i + 1}:"
+                f"  y={row.y:<4}"
+                f"  frame={row.frame_idx:<6}"
+                f"  text=[{text}]"
+            )
+
+        lines.append("=" * 60)
+
+        return "\n".join(lines)
+
+    def add_row(self, new_row: KillFeedRow):
+        self.rows.append(new_row)
+        self.rows.sort(key=lambda r: r.y)  # Keep rows sorted by their y-coordinate
+
+    def remove_old_rows(self, current_frame: int, fps: float = 30.0, max_age: float = 5.0):
+        for row in self.rows:
+            current_time = current_frame / fps
+            timestamp = row.frame_idx / fps
+            if current_time - timestamp > max_age:
+                self.rows.remove(row)
 
     def get_latest_row(self):
         if self.rows:
-            return max(self.rows, key=lambda row: row.timestamp)
+            return max(self.rows, key=lambda row: row.frame_idx)
         return None
 
     def clear(self):
         self.rows.clear()
-
 
 reader = easyocr.Reader(['en'], gpu=True)
 
@@ -209,7 +238,7 @@ def preprocess_kill_feed(crop):
     """Preprocesses the cropped kill feed for OCR. Returns a binary image suitable for OCR."""
     return cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)  # Resize to double the size for better OCR accuracy
 
-def ocr_kill_feed(frame):
+def ocr_kill_feed(frame, frame_idx):
     """Performs OCR on the kill feed area of the frame. Returns a list of KillFeedDetection objects."""
     crop, (ox, oy) = crop_kill_frame(frame)
     if crop.size == 0:
@@ -228,7 +257,7 @@ def ocr_kill_feed(frame):
         y = box[0][1]  # y-coordinate of the top-left corner
         x = box[0][0]  # x-coordinate of the top-left corner
 
-        detection = KillFeedDetection(text=text, conf=conf, x=x + ox, y=y + oy)
+        detection = KillFeedDetection(text=text, conf=conf, x=x + ox, y=y + oy, frame_idx=frame_idx)
 
         detections.append(detection)  # Adjust coordinates to original frame
         # Draw the bounding box on the original frame for visualization
@@ -273,6 +302,7 @@ def group_rows(detections, y_threshold=20):
             text=[r.text for r in group],
             y=int(sum(r.y for r in group) / len(group)),
             x=min(r.x for r in group),
+            frame_idx= min(group[0], group[-1], key=lambda r: r.frame_idx).frame_idx,  # Use the frame index of the first detection in the group
             parts=group
         )
         kill_feed.add_row(row)
@@ -380,10 +410,10 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                     # Calculate the vertical crosshair error & display it on the frame
                     display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
 
-            ocr_detections = ocr_kill_feed(frame)
+            ocr_detections = ocr_kill_feed(frame, frame_idx)
             kill_feed = group_rows(ocr_detections)
-            print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed.rows}")
-            print("--------------------------------------------------")
+            
+            print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
 
             # Display the frame on screen
             cv2.imshow('Valorant AI Coach - Vision Test', frame)
@@ -393,10 +423,10 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
         if key == ord(' '):
             paused = not paused
-        elif key == 2:  # Left arrow key
+        elif key == 2 or key == ord('a'):  # Left arrow key or 'a' key **arrow keys do not work on windows
             frame_idx = max(0, frame_idx - rewind_step)  # Rewind
             #paused = True  # Pause after rewinding
-        elif key == 3:  # Right arrow key
+        elif key == 3 or key == ord('d'):  # Right arrow key or 'd' key **arrow keys do not work on windows
             frame_idx += ff_step  # Fast forward
             #paused = True  # Pause after fast forwarding
         elif key == ord('q'):
