@@ -5,6 +5,8 @@ from difflib import SequenceMatcher
 
 from dataclasses import dataclass, field
 from typing import List
+import re
+from difflib import SequenceMatcher
 
 @dataclass
 class KillFeedDetection:
@@ -23,6 +25,15 @@ class KillFeedRow:
     x: int
     frame_idx: int
     parts: list = field(default_factory=list)
+
+    def __repr__(self):
+        return (
+            f"KillFeedRow | "
+            f"text={self.text} | "
+            f"pos=({self.x}, {self.y}) | "
+            f"frame={self.frame_idx} | "
+            f"parts={len(self.parts)}"
+        )
      
 @dataclass
 class KillFeed:
@@ -309,6 +320,59 @@ def group_rows(detections, y_threshold=20):
 
     return kill_feed
 
+def normalize_text(text):
+    return re.sub(r'[^a-zA-Z0-9]', '', text).lower()
+
+def is_user_name_match(detected_text, user_name):
+    detected = normalize_text(detected_text)
+    expected = normalize_text(user_name)
+
+    if not detected or not expected:
+        return False
+
+    # Exact match
+    if detected == expected:
+        return True
+
+    # Never allow the username to match as part of a longer word.
+    # Prevents "aime" -> "me".
+    if len(detected) > len(expected) + 1:
+        return False
+
+    # For short usernames, compare character-by-character.
+    if len(expected) <= 3:
+        # Allow one OCR character substitution
+        if len(detected) == len(expected):
+            differences = sum(
+                a != b
+                for a, b in zip(detected, expected)
+            )
+
+            return differences <= 1
+
+        # Allow one extra OCR character
+        if len(detected) == len(expected) + 1:
+            differences = 0
+
+            for i in range(len(detected)):
+                shortened = detected[:i] + detected[i + 1:]
+
+                if shortened == expected:
+                    return True
+
+            return False
+
+        return False
+
+    # Longer usernames can use fuzzy matching
+    similarity = SequenceMatcher(
+        None,
+        detected,
+        expected
+    ).ratio()
+
+    return similarity >= 0.70
+
 def process_valorant_replay(video_path, enemy_model_path, head_model_path):
    
     # Load trained models (the best.pt file)
@@ -326,6 +390,9 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
     # Get the class names the models were trained on
     enemy_class_names = enemy_model.names
     head_class_names = head_model.names
+
+    user_name = input("Enter your in-game name (or leave blank to skip): ").strip()
+    user_kills = []
 
     print("Processing video... Press 'q' to stop.")
 
@@ -415,6 +482,60 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
             
             print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
 
+            # Update user_kills list based on the current frame's kill feed
+            for row in kill_feed.rows:
+                if not user_name or not row.parts:
+                    continue
+
+                leftmost_part = min(row.parts, key=lambda p: p.x)
+
+                if not is_user_name_match(leftmost_part.text, user_name):
+                    print(
+                        f"REJECTED USERNAME: "
+                        f"detected={leftmost_part.text!r}, "
+                        f"expected={user_name!r}"
+                    )
+                    continue
+                print(
+                    f"ACCEPTED USERNAME: "
+                    f"detected={leftmost_part.text!r}, "
+                    f"expected={user_name!r}"
+                    )
+
+                new_text = " ".join(row.text).lower().strip()
+
+                is_duplicate = False
+
+                for existing_kill in user_kills:
+                    existing_text = " ".join(existing_kill.text).lower().strip()
+
+                    # 1. Exact text match -> definitely a duplicate
+                    if new_text == existing_text:
+                        is_duplicate = True
+                        break
+
+                    # 2. Fuzzy text match -> check Y position
+                    similarity = SequenceMatcher(
+                        None,
+                        new_text,
+                        existing_text
+                    ).ratio()
+
+                    if similarity >= 0.70:
+                        y_difference = abs(row.y - existing_kill.y)
+
+                        # Close text + close Y -> duplicate
+                        if y_difference <= 20:
+                            is_duplicate = True
+                            break
+
+                # 3. Only append if it wasn't a duplicate
+                if not is_duplicate:
+                    user_kills.append(row)
+                    print(f"NEW KILL: {row}")
+
+            print(f"Frame {frame_idx}: User Kills: {user_kills}")
+
             # Display the frame on screen
             cv2.imshow('Valorant AI Coach - Vision Test', frame)
             frame_idx += step  # Move to the next frame
@@ -429,15 +550,21 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
         elif key == 3 or key == ord('d'):  # Right arrow key or 'd' key **arrow keys do not work on windows
             frame_idx += ff_step  # Fast forward
             #paused = True  # Pause after fast forwarding
+        
+        elif key == ord('j'): 
+                    frame_idx += 200 
+
         elif key == ord('q'):
+            print("Quitting video processing.")
             break  # Quit the loop
+            
 
     # Clean up when done
     cap.release()
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    MY_VIDEO = "input/test-clip-4.mp4"
+    MY_VIDEO = "input/test-clip-1.mp4"
     
     MY_ENEMY_MODEL = "runs/detect/valorant_coach/enemy_model_v1/weights/best.pt"
     MY_HEAD_MODEL = "runs/detect/valorant_coach/head_model_v1/weights/best.pt"
