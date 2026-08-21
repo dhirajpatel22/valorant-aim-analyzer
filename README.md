@@ -37,6 +37,15 @@ This project is being developed as a portfolio project to explore:
 ---
 
 ## Features In Progress
+🚧 **Kill Detection**
+- Implemented OCR-based detection of the Valorant kill feed using EasyOCR.
+- Detects and groups individual OCR text detections into kill feed rows.
+- Added fuzzy string matching to handle OCR inconsistencies and duplicate detections across frames.
+- Tracks potential kill events across multiple frames using kill candidates, rather than treating every OCR detection as a new kill.
+- Uses the position and timing of detections to determine whether a newly detected row corresponds to an existing candidate.
+- Currently refining candidate expiration and confirmation logic to reliably determine when a kill event has disappeared from the feed and should be finalized.
+
+
 
 🚧 **Aim Analysis**
 - Measuring how quickly and accurately the player moves their crosshair onto targets.
@@ -47,7 +56,6 @@ This project is being developed as a portfolio project to explore:
 
 ## Future Features
 
-- Kill detection and event tracking
 - Reaction time measurement
 - Headshot accuracy analysis
 - Crosshair placement scoring
@@ -93,6 +101,14 @@ valorant-aim-analyzer/
 ├── yolo11n.pt                  # Pre-trained YOLO11 Nano model used for transfer learning
 └── README.md   
 ```
+
+## Dataset
+I combinded various datatsets on Roboflow into one set to give my model as many training images as possible.
+
+* Enemy model: https://universe.roboflow.com/dhiraj-patel/valorant-enemy-detection-fcgle
+* Head model: https://universe.roboflow.com/dhiraj-patel/valorant-head-detection-g8rzf
+* Enemy & head model: https://universe.roboflow.com/dhiraj-patel/valorant-enemy-head-detection
+
 
 ## Disclaimer
 
