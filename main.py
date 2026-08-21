@@ -1,4 +1,5 @@
 import cv2
+from sympy import fps
 from ultralytics import YOLO
 import easyocr
 from difflib import SequenceMatcher 
@@ -7,6 +8,12 @@ from dataclasses import dataclass, field
 from typing import List
 import re
 from difflib import SequenceMatcher
+from colorama import Fore, Style, init
+from itertools import count
+
+init(autoreset=True)  # Automatically reset color after each print
+reader = easyocr.Reader(['en'], gpu=True)
+candidate_id_counter = count()  # Global counter for unique IDs
 
 @dataclass
 class KillFeedDetection:
@@ -57,7 +64,7 @@ class KillFeed:
             lines.append(
                 f"Row {i + 1}:"
                 f"  y={row.y:<4}"
-                f"  frame={row.frame_idx:<6}"
+                #f"  frame={row.frame_idx:<6}"
                 f"  text=[{text}]"
             )
 
@@ -84,7 +91,21 @@ class KillFeed:
     def clear(self):
         self.rows.clear()
 
-reader = easyocr.Reader(['en'], gpu=True)
+@dataclass
+class KillCandidate:
+    """Represents a potential user kill event detected in the kill feed."""
+    rows: list[KillFeedRow]
+    x: int
+    y: int
+    first_frame: int
+    last_frame: int
+    ID: int = field(default_factory=lambda: next(candidate_id_counter))  # Unique identifier for the kill candidate
+
+    def __repr__(self):
+        return (
+            f"KillCandidate(ID = {self.ID}) | text = {self.rows[-1].text} | frames=({self.first_frame}-{self.last_frame}) | "
+            f"y={self.y}"
+        )
 
 def draw_crosshair(frame):
     """Draws a crosshair at the center of the given frame. Modifies the frame in place. Returns the center coordinates as a tuple."""
@@ -264,16 +285,16 @@ def ocr_kill_feed(frame, frame_idx):
         if conf < 0.35 or len(text) < 2:
             continue
         # box is 4 points, use top left y to group rows
-
-        y = box[0][1]  # y-coordinate of the top-left corner
-        x = box[0][0]  # x-coordinate of the top-left corner
+        
+        scale = 3.0
+        y = int(box[0][1] / scale) + oy  # y-coordinate of the top-left corner
+        x = int(box[0][0] / scale) + ox  # x-coordinate of the top-left corner
 
         detection = KillFeedDetection(text=text, conf=conf, x=x + ox, y=y + oy, frame_idx=frame_idx)
 
         detections.append(detection)  # Adjust coordinates to original frame
         # Draw the bounding box on the original frame for visualization
-        scale = 3.0
-
+        
         x1 = int(box[0][0] / scale) + ox
         y1 = int(box[0][1] / scale) + oy
         x2 = int(box[2][0] / scale) + ox
@@ -283,7 +304,7 @@ def ocr_kill_feed(frame, frame_idx):
 
     return detections
 
-def group_rows(detections, y_threshold=20):
+def group_rows(detections, y_threshold=10):
     """ Groups KillFeedDetection objects based on their y-coordinates. Returns a KillFeed object containing grouped KillFeedRow objects."""
     if not detections:
         empty_kill_feed = KillFeed()
@@ -392,6 +413,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
     head_class_names = head_model.names
 
     user_name = input("Enter your in-game name (or leave blank to skip): ").strip()
+    kill_candidates = []
     user_kills = []
 
     print("Processing video... Press 'q' to stop.")
@@ -401,12 +423,16 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
     step = 1  # Variable to control frame stepping
     rewind_step = 30  # Number of frames to rewind 
     ff_step = 30  # Number of frames to fast forward 
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps == 0:
+        print("Error: Could not retrieve FPS from video.")
+        return
     
     # Loop through the video frame by frame
     while True:
 
         if not paused:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)  # Set the current frame position
+            #cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)  # Set the current frame position
             ret, frame = cap.read()  # ret is a boolean that is True if the frame was read correctly
 
             # If ret is False, we've reached the end of the video
@@ -455,7 +481,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                     #If head detected 
                     if best_head_box is not None:
                         head_found = True
-                        (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_head(frame, head_box, x1, y1, x2, y2)
+                        (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_head(frame, best_head_box, x1, y1, x2, y2)
 
                     if not head_found:
                         (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_estimate_head(frame, (x1, y1, x2, y2))
@@ -482,59 +508,106 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
             
             print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
 
-            # Update user_kills list based on the current frame's kill feed
+            # Update kill_candidates list based on the current frame's kill feed
             for row in kill_feed.rows:
-                if not user_name or not row.parts:
-                    continue
 
-                leftmost_part = min(row.parts, key=lambda p: p.x)
+                matched = False
+                
+                for kill_candidate in kill_candidates:
 
-                if not is_user_name_match(leftmost_part.text, user_name):
+                    y_difference = abs(row.y - kill_candidate.y)
+                    if y_difference <= 20: # Same y
+                        kill_candidate.last_frame = frame_idx
+                        kill_candidate.rows.append(row)
+                        matched = True
+                        break
+                    elif y_difference > 20: # Different y 
+                        new_text = " ".join(row.text).lower().strip()
+                        existing_text = " ".join(kill_candidate.rows[-1].text).lower().strip() #take last row of candidate text for now
+
+                        text_match = False
+
+                        if new_text == existing_text: # Same text (exact match)
+                            text_match = True
+                        else:
+                            similarity = SequenceMatcher(None, new_text, existing_text).ratio()
+                            """print(
+                                    f"Comparing row={row.text} y={row.y} "
+                                    f"against candidate={kill_candidate.rows[-1].text} "
+                                    f"y={kill_candidate.y}"
+                                )
+                            print(f"Text similarity: {similarity:.3f}")"""
+
+                            new_right = new_text.split()[-1] if new_text.split() else ""
+                            existing_right = existing_text.split()[-1] if existing_text.split() else ""
+
+
+                            right_similarity = SequenceMatcher(None, new_right, existing_right).ratio()
+
+                            #print(f"Right word similarity: {right_similarity:.3f}")
+
+                                
+                            if (similarity >= 0.70) or (right_similarity >= 0.75): # Same text (fuzzy match)
+                                text_match = True
+                                #print(f"{Fore.GREEN}Fuzzy match found: {new_text} ~ {existing_text}")
+
+                        if text_match == True: # Same text
+                            if row.y < kill_candidate.y: # New row is above the candidate
+                                print(f"{Fore.BLUE}Text match found AND row above kill candidate. KC ID: {kill_candidate.ID} row:{row.text}")
+                                kill_candidate.rows.append(row)
+                                kill_candidate.last_frame = frame_idx
+                                kill_candidate.y = row.y  # Update the y-coordinate to the new row's y
+                                
+                                matched = True
+                                break
+                                
+                            elif row.y > kill_candidate.y: # New row is below the candidate
+                                matched = False
+                                
+                        else: # Different text
+                            # If the new row is below the candidate, we can consider it a new kill candidate
+                            if row.y > kill_candidate.y:
+                                matched = False
+                                
+                if not matched:
+                    new_kill_candidate = KillCandidate(
+                                            rows=[row],
+                                            x=row.x,
+                                            y=row.y,
+                                            first_frame=frame_idx,
+                                            last_frame=frame_idx
+                                        )
+                    kill_candidates.append(new_kill_candidate)
+
+            for kill_candidate in kill_candidates[:]:  # Iterate over a copy of the list to not modify it while iterating
+                if (frame_idx - kill_candidate.first_frame) / fps > 5: # If the candidate is older than 5.6 seconds
+                    print(f"{Fore.RED}Kill candidate expired: {kill_candidate}")
+                                    
+                    if not user_name:
+                        continue
+
+                    leftmost_part = min(kill_candidate.rows[-1].parts, key=lambda p: p.x)
+
+                    if not is_user_name_match(leftmost_part.text, user_name): #Does user name match the leftmost part of the kill candidate row? If not, reject it.
+                        print(
+                            f"{Fore.RED}REJECTED USERNAME: "
+                            f"detected={leftmost_part.text!r}, "
+                            f"expected={user_name!r}"
+                        )
+                        kill_candidates.remove(kill_candidate)
+                        continue
                     print(
-                        f"REJECTED USERNAME: "
+                        f"{Fore.GREEN}ACCEPTED USERNAME: "
                         f"detected={leftmost_part.text!r}, "
                         f"expected={user_name!r}"
-                    )
-                    continue
-                print(
-                    f"ACCEPTED USERNAME: "
-                    f"detected={leftmost_part.text!r}, "
-                    f"expected={user_name!r}"
-                    )
+                        )
+                    
+                    user_kills.append(kill_candidate)
+                    print(f"{Fore.YELLOW}NEW KILL: {kill_candidate}")
 
-                new_text = " ".join(row.text).lower().strip()
+                    kill_candidates.remove(kill_candidate)
 
-                is_duplicate = False
-
-                for existing_kill in user_kills:
-                    existing_text = " ".join(existing_kill.text).lower().strip()
-
-                    # 1. Exact text match -> definitely a duplicate
-                    if new_text == existing_text:
-                        is_duplicate = True
-                        break
-
-                    # 2. Fuzzy text match -> check Y position
-                    similarity = SequenceMatcher(
-                        None,
-                        new_text,
-                        existing_text
-                    ).ratio()
-
-                    if similarity >= 0.70:
-                        y_difference = abs(row.y - existing_kill.y)
-
-                        # Close text + close Y -> duplicate
-                        if y_difference <= 20:
-                            is_duplicate = True
-                            break
-
-                # 3. Only append if it wasn't a duplicate
-                if not is_duplicate:
-                    user_kills.append(row)
-                    print(f"NEW KILL: {row}")
-
-            print(f"Frame {frame_idx}: User Kills: {user_kills}")
+            print(f"Frame {frame_idx}: User Kills: {user_kills} \n          Kill Candidates: {kill_candidates}")
 
             # Display the frame on screen
             cv2.imshow('Valorant AI Coach - Vision Test', frame)
@@ -546,14 +619,12 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
             paused = not paused
         elif key == 2 or key == ord('a'):  # Left arrow key or 'a' key **arrow keys do not work on windows
             frame_idx = max(0, frame_idx - rewind_step)  # Rewind
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             #paused = True  # Pause after rewinding
         elif key == 3 or key == ord('d'):  # Right arrow key or 'd' key **arrow keys do not work on windows
             frame_idx += ff_step  # Fast forward
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             #paused = True  # Pause after fast forwarding
-        
-        elif key == ord('j'): 
-                    frame_idx += 200 
-
         elif key == ord('q'):
             print("Quitting video processing.")
             break  # Quit the loop
@@ -564,7 +635,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    MY_VIDEO = "input/test-clip-1.mp4"
+    MY_VIDEO = "input/test-clip-4.mp4"
     
     MY_ENEMY_MODEL = "runs/detect/valorant_coach/enemy_model_v1/weights/best.pt"
     MY_HEAD_MODEL = "runs/detect/valorant_coach/head_model_v1/weights/best.pt"

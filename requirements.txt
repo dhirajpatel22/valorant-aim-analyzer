@@ -1,3 +1,4 @@
 opencv-python
 ultralytics
 easyocr
+colorama #for coloring print statements (debugging)
