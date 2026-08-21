@@ -3,11 +3,9 @@ from sympy import fps
 from ultralytics import YOLO
 import easyocr
 from difflib import SequenceMatcher 
-
 from dataclasses import dataclass, field
 from typing import List
 import re
-from difflib import SequenceMatcher
 from colorama import Fore, Style, init
 from itertools import count
 
@@ -75,13 +73,6 @@ class KillFeed:
     def add_row(self, new_row: KillFeedRow):
         self.rows.append(new_row)
         self.rows.sort(key=lambda r: r.y)  # Keep rows sorted by their y-coordinate
-
-    def remove_old_rows(self, current_frame: int, fps: float = 30.0, max_age: float = 5.0):
-        for row in self.rows:
-            current_time = current_frame / fps
-            timestamp = row.frame_idx / fps
-            if current_time - timestamp > max_age:
-                self.rows.remove(row)
 
     def get_latest_row(self):
         if self.rows:
@@ -290,7 +281,7 @@ def ocr_kill_feed(frame, frame_idx):
         y = int(box[0][1] / scale) + oy  # y-coordinate of the top-left corner
         x = int(box[0][0] / scale) + ox  # x-coordinate of the top-left corner
 
-        detection = KillFeedDetection(text=text, conf=conf, x=x + ox, y=y + oy, frame_idx=frame_idx)
+        detection = KillFeedDetection(text=text, conf=conf, x=x, y=y, frame_idx=frame_idx)
 
         detections.append(detection)  # Adjust coordinates to original frame
         # Draw the bounding box on the original frame for visualization
