@@ -21,6 +21,7 @@ class KillFeedDetection:
     x: int
     y: int
     frame_idx: int 
+    blur_score: float = None  # Optional attribute to store the blur score of the detection
 
 @dataclass
 class KillFeedRow:
@@ -59,11 +60,24 @@ class KillFeed:
                 getattr(t, "text", str(t)) for t in row.text
             )
 
+            blur_left = (
+                f"{row.parts[0].blur_score:.3f}"
+                if row.parts
+                else "N/A"
+            )
+
+            blur_right = (
+                f"{row.parts[1].blur_score:.3f}"
+                if len(row.parts) > 1
+                else "N/A"
+            )
+
             lines.append(
                 f"Row {i + 1}:"
                 f"  y={row.y:<4}"
-                #f"  frame={row.frame_idx:<6}"
                 f"  text=[{text}]"
+                f"  blur_score_left={blur_left:<6}"
+                f"  blur_score_right={blur_right:<6}"
             )
 
         lines.append("=" * 60)
@@ -270,6 +284,11 @@ def preprocess_kill_feed(crop):
     """Preprocesses the cropped kill feed for OCR. Returns a binary image suitable for OCR."""
     return cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)  # Resize to double the size for better OCR accuracy
 
+def is_sharp_enough(crop, threshold=80):
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    score = cv2.Laplacian(gray, cv2.CV_64F).var()
+    return score, score >= threshold
+
 def ocr_kill_feed(frame, frame_idx):
     """Performs OCR on the kill feed area of the frame. Returns a list of KillFeedDetection objects."""
     crop, (ox, oy) = crop_kill_frame(frame)
@@ -290,7 +309,21 @@ def ocr_kill_feed(frame, frame_idx):
         y = int(box[0][1] / scale) + oy  # y-coordinate of the top-left corner
         x = int(box[0][0] / scale) + ox  # x-coordinate of the top-left corner
 
-        detection = KillFeedDetection(text=text, conf=conf, x=x, y=y, frame_idx=frame_idx)
+        # Get bounding box coordinates in the processed image
+        bx1 = int(min(point[0] for point in box))
+        by1 = int(min(point[1] for point in box))
+        bx2 = int(max(point[0] for point in box))
+        by2 = int(max(point[1] for point in box))
+
+        # Crop the actual detected text region
+        text_crop = proc[by1:by2, bx1:bx2]
+
+        if text_crop.size == 0:
+            continue
+
+        score, threshold = is_sharp_enough(text_crop)
+
+        detection = KillFeedDetection(text=text, conf=conf, x=x, y=y, frame_idx=frame_idx, blur_score=score)
 
         detections.append(detection)  # Adjust coordinates to original frame
         # Draw the bounding box on the original frame for visualization
@@ -302,7 +335,7 @@ def ocr_kill_feed(frame, frame_idx):
         
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2) 
 
-    return detections, crop
+    return detections
 
 def group_rows(detections, y_threshold=10):
     """ Groups KillFeedDetection objects based on their y-coordinates. Returns a KillFeed object containing grouped KillFeedRow objects."""
@@ -394,10 +427,17 @@ def is_user_name_match(detected_text, user_name):
 
     return similarity >= 0.70
 
-def is_sharp_enough(crop, threshold=80):
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    score = cv2.Laplacian(gray, cv2.CV_64F).var()
-    return score, score >= threshold
+def is_bad_kill_feed_frame(detections, threshold=20):
+    if not detections:
+        return False
+
+    blur_scores = [d.blur_score for d in detections]
+
+    low_blur_count = sum(score < threshold for score in blur_scores)
+
+    # If most OCR detections are heavily blurred,
+    # don't trust this frame.
+    return low_blur_count >= 2
 
 def process_valorant_replay(video_path, enemy_model_path, head_model_path):
    
@@ -508,14 +548,16 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                     # Calculate the vertical crosshair error & display it on the frame
                     display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
 
-            ocr_detections, kill_feed_crop = ocr_kill_feed(frame, frame_idx)
+            ocr_detections = ocr_kill_feed(frame, frame_idx)
+
+            if is_bad_kill_feed_frame(ocr_detections):
+                print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Skipping frame due to poor OCR quality.")
+                frame_idx += step  # Move to the next frame
+                continue
+
             kill_feed = group_rows(ocr_detections)
 
             print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
-
-            """for detection in ocr_detections:
-                            score, threshold = is_sharp_enough(kill_feed_crop)
-                            print(f"Detection: {detection.text}, Sharpness Score: {score:.2f}, Sharp Enough: {threshold}")"""
 
             # Update kill_candidates list based on the current frame's kill feed
             for row in kill_feed.rows:
@@ -612,7 +654,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                         )
                     
                     user_kills.append(kill_candidate)
-                    print(f"{Fore.YELLOW}NEW KILL: {kill_candidate}")
+                    print(f"{Fore.GREEN}NEW KILL: {kill_candidate}")
 
                     kill_candidates.remove(kill_candidate)
 
