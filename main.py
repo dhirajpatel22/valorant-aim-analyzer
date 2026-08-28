@@ -95,8 +95,17 @@ class KillCandidate:
     def __repr__(self):
         return (
             f"KillCandidate(ID = {self.ID}) | text = {self.rows[-1].text} | frames=({self.first_frame}-{self.last_frame}) | "
-            f"y={self.y}"
+            f"y={self.y} | past_text = {self.rows[-2].text if len(self.rows) > 1 else 'N/A'}"
         )
+
+def seek_and_display_frame(cap, frame_idx):
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+    ret, frame = cap.read()
+
+    if ret:
+        cv2.imshow('Valorant AI Coach - Vision Test', frame)
+
+    return ret, frame
 
 def draw_crosshair(frame):
     """Draws a crosshair at the center of the given frame. Modifies the frame in place. Returns the center coordinates as a tuple."""
@@ -293,7 +302,7 @@ def ocr_kill_feed(frame, frame_idx):
         
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2) 
 
-    return detections
+    return detections, crop
 
 def group_rows(detections, y_threshold=10):
     """ Groups KillFeedDetection objects based on their y-coordinates. Returns a KillFeed object containing grouped KillFeedRow objects."""
@@ -384,6 +393,11 @@ def is_user_name_match(detected_text, user_name):
     ).ratio()
 
     return similarity >= 0.70
+
+def is_sharp_enough(crop, threshold=80):
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    score = cv2.Laplacian(gray, cv2.CV_64F).var()
+    return score, score >= threshold
 
 def process_valorant_replay(video_path, enemy_model_path, head_model_path):
    
@@ -494,10 +508,14 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                     # Calculate the vertical crosshair error & display it on the frame
                     display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
 
-            ocr_detections = ocr_kill_feed(frame, frame_idx)
+            ocr_detections, kill_feed_crop = ocr_kill_feed(frame, frame_idx)
             kill_feed = group_rows(ocr_detections)
-            
+
             print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
+
+            """for detection in ocr_detections:
+                            score, threshold = is_sharp_enough(kill_feed_crop)
+                            print(f"Detection: {detection.text}, Sharpness Score: {score:.2f}, Sharp Enough: {threshold}")"""
 
             # Update kill_candidates list based on the current frame's kill feed
             for row in kill_feed.rows:
@@ -610,12 +628,25 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
             paused = not paused
         elif key == 2 or key == ord('a'):  # Left arrow key or 'a' key **arrow keys do not work on windows
             frame_idx = max(0, frame_idx - rewind_step)  # Rewind
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            #paused = True  # Pause after rewinding
+            ret, frame = seek_and_display_frame(cap, frame_idx)
+            
         elif key == 3 or key == ord('d'):  # Right arrow key or 'd' key **arrow keys do not work on windows
             frame_idx += ff_step  # Fast forward
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            #paused = True  # Pause after fast forwarding
+            ret, frame = seek_and_display_frame(cap, frame_idx)
+
+
+        # for testing
+        elif key == ord('j'):
+            frame_idx += 1658  # jump to specific frame (for testing)
+            ret, frame = seek_and_display_frame(cap, frame_idx)
+        elif key == ord('x'):
+            frame_idx += 1  # forward 1 frame
+            ret, frame = seek_and_display_frame(cap, frame_idx)
+        elif key == 2 or key == ord('z'):  
+            frame_idx = max(0, frame_idx - 1)  # Rewind 1 frame
+            ret, frame = seek_and_display_frame(cap, frame_idx)
+
+
         elif key == ord('q'):
             print("Quitting video processing.")
             break  # Quit the loop
