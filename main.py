@@ -427,7 +427,7 @@ def is_user_name_match(detected_text, user_name):
 
     return similarity >= 0.70
 
-def is_bad_kill_feed_frame(detections, threshold=20):
+def is_bad_kill_feed_frame(detections, threshold=10):
     if not detections:
         return False
 
@@ -552,113 +552,118 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
             if is_bad_kill_feed_frame(ocr_detections):
                 print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Skipping frame due to poor OCR quality.")
-                frame_idx += step  # Move to the next frame
-                continue
 
-            kill_feed = group_rows(ocr_detections)
+                kill_feed = group_rows(ocr_detections)
+                print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
 
-            print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
-
-            # Update kill_candidates list based on the current frame's kill feed
-            for row in kill_feed.rows:
-
-                matched = False
                 
-                for kill_candidate in kill_candidates:
+            else: 
 
-                    y_difference = abs(row.y - kill_candidate.y)
-                    if y_difference <= 20: # Same y
-                        kill_candidate.last_frame = frame_idx
-                        kill_candidate.rows.append(row)
-                        matched = True
-                        break
-                    elif y_difference > 20: # Different y 
-                        new_text = " ".join(row.text).lower().strip()
-                        existing_text = " ".join(kill_candidate.rows[-1].text).lower().strip() #take last row of candidate text for now
+                kill_feed = group_rows(ocr_detections)
 
-                        text_match = False
+                print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
 
-                        if new_text == existing_text: # Same text (exact match)
-                            text_match = True
-                        else:
-                            similarity = SequenceMatcher(None, new_text, existing_text).ratio()
-                            """print(
-                                    f"Comparing row={row.text} y={row.y} "
-                                    f"against candidate={kill_candidate.rows[-1].text} "
-                                    f"y={kill_candidate.y}"
-                                )
-                            print(f"Text similarity: {similarity:.3f}")"""
+                # Update kill_candidates list based on the current frame's kill feed
+                for row in kill_feed.rows:
 
-                            new_right = new_text.split()[-1] if new_text.split() else ""
-                            existing_right = existing_text.split()[-1] if existing_text.split() else ""
+                    matched = False
+                    
+                    for kill_candidate in kill_candidates:
 
+                        y_difference = abs(row.y - kill_candidate.y)
+                        if y_difference <= 20: # Same y
+                            kill_candidate.last_frame = frame_idx
+                            kill_candidate.rows.append(row)
+                            matched = True
+                            break
+                        elif y_difference > 20: # Different y 
+                            new_text = " ".join(row.text).lower().strip()
+                            existing_text = " ".join(kill_candidate.rows[-1].text).lower().strip() #take last row of candidate text for now
 
-                            right_similarity = SequenceMatcher(None, new_right, existing_right).ratio()
+                            text_match = False
 
-                            #print(f"Right word similarity: {right_similarity:.3f}")
-
-                                
-                            if (similarity >= 0.70) or (right_similarity >= 0.75): # Same text (fuzzy match)
+                            if new_text == existing_text: # Same text (exact match)
                                 text_match = True
-                                #print(f"{Fore.GREEN}Fuzzy match found: {new_text} ~ {existing_text}")
+                            else:
+                                similarity = SequenceMatcher(None, new_text, existing_text).ratio()
+                                """print(
+                                        f"Comparing row={row.text} y={row.y} "
+                                        f"against candidate={kill_candidate.rows[-1].text} "
+                                        f"y={kill_candidate.y}"
+                                    )
+                                print(f"Text similarity: {similarity:.3f}")"""
 
-                        if text_match == True: # Same text
-                            if row.y < kill_candidate.y: # New row is above the candidate
-                                print(f"{Fore.BLUE}Text match found AND row above kill candidate. KC ID: {kill_candidate.ID} row:{row.text}")
-                                kill_candidate.rows.append(row)
-                                kill_candidate.last_frame = frame_idx
-                                kill_candidate.y = row.y  # Update the y-coordinate to the new row's y
-                                
-                                matched = True
-                                break
-                                
-                            elif row.y > kill_candidate.y: # New row is below the candidate
-                                matched = False
-                                
-                        else: # Different text
-                            # If the new row is below the candidate, we can consider it a new kill candidate
-                            if row.y > kill_candidate.y:
-                                matched = False
-                                
-                if not matched:
-                    new_kill_candidate = KillCandidate(
-                                            rows=[row],
-                                            x=row.x,
-                                            y=row.y,
-                                            first_frame=frame_idx,
-                                            last_frame=frame_idx
-                                        )
-                    kill_candidates.append(new_kill_candidate)
+                                new_right = new_text.split()[-1] if new_text.split() else ""
+                                existing_right = existing_text.split()[-1] if existing_text.split() else ""
 
-            for kill_candidate in kill_candidates[:]:  # Iterate over a copy of the list to not modify it while iterating
-                if (frame_idx - kill_candidate.first_frame) / fps > 5: # If the candidate is older than 5.6 seconds
-                    print(f"{Fore.RED}Kill candidate expired: {kill_candidate}")
+
+                                right_similarity = SequenceMatcher(None, new_right, existing_right).ratio()
+
+                                #print(f"Right word similarity: {right_similarity:.3f}")
+
                                     
-                    if not user_name:
-                        continue
+                                if (similarity >= 0.70) or (right_similarity >= 0.75): # Same text (fuzzy match)
+                                    text_match = True
+                                    #print(f"{Fore.GREEN}Fuzzy match found: {new_text} ~ {existing_text}")
 
-                    leftmost_part = min(kill_candidate.rows[-1].parts, key=lambda p: p.x)
+                            if text_match == True: # Same text
+                                if row.y < kill_candidate.y: # New row is above the candidate
+                                    print(f"{Fore.BLUE}Text match found AND row above kill candidate. KC ID: {kill_candidate.ID} row:{row.text}")
+                                    kill_candidate.rows.append(row)
+                                    kill_candidate.last_frame = frame_idx
+                                    kill_candidate.y = row.y  # Update the y-coordinate to the new row's y
+                                    
+                                    matched = True
+                                    break
+                                    
+                                elif row.y > kill_candidate.y: # New row is below the candidate
+                                    matched = False
+                                    
+                            else: # Different text
+                                # If the new row is below the candidate, we can consider it a new kill candidate
+                                if row.y > kill_candidate.y:
+                                    matched = False
+                                    
+                    if not matched:
+                        new_kill_candidate = KillCandidate(
+                                                rows=[row],
+                                                x=row.x,
+                                                y=row.y,
+                                                first_frame=frame_idx,
+                                                last_frame=frame_idx
+                                            )
+                        kill_candidates.append(new_kill_candidate)
 
-                    if not is_user_name_match(leftmost_part.text, user_name): #Does user name match the leftmost part of the kill candidate row? If not, reject it.
+                for kill_candidate in kill_candidates[:]:  # Iterate over a copy of the list to not modify it while iterating
+                    if (frame_idx - kill_candidate.first_frame) / fps > 5: # If the candidate is older than 5.6 seconds
+                        print(f"{Fore.RED}Kill candidate expired: {kill_candidate}")
+                                        
+                        if not user_name:
+                            continue
+
+                        leftmost_part = min(kill_candidate.rows[-1].parts, key=lambda p: p.x)
+
+                        if not is_user_name_match(leftmost_part.text, user_name): #Does user name match the leftmost part of the kill candidate row? If not, reject it.
+                            print(
+                                f"{Fore.RED}REJECTED USERNAME: "
+                                f"detected={leftmost_part.text!r}, "
+                                f"expected={user_name!r}"
+                            )
+                            kill_candidates.remove(kill_candidate)
+                            continue
                         print(
-                            f"{Fore.RED}REJECTED USERNAME: "
+                            f"{Fore.GREEN}ACCEPTED USERNAME: "
                             f"detected={leftmost_part.text!r}, "
                             f"expected={user_name!r}"
-                        )
+                            )
+                        
+                        user_kills.append(kill_candidate)
+                        print(f"{Fore.GREEN}NEW KILL: {kill_candidate}")
+
                         kill_candidates.remove(kill_candidate)
-                        continue
-                    print(
-                        f"{Fore.GREEN}ACCEPTED USERNAME: "
-                        f"detected={leftmost_part.text!r}, "
-                        f"expected={user_name!r}"
-                        )
-                    
-                    user_kills.append(kill_candidate)
-                    print(f"{Fore.GREEN}NEW KILL: {kill_candidate}")
 
-                    kill_candidates.remove(kill_candidate)
+                print(f"Frame {frame_idx}: User Kills: {user_kills} \n          Kill Candidates: {kill_candidates}")
 
-            print(f"Frame {frame_idx}: User Kills: {user_kills} \n          Kill Candidates: {kill_candidates}")
 
             # Display the frame on screen
             cv2.imshow('Valorant AI Coach - Vision Test', frame)
@@ -679,7 +684,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
         # for testing
         elif key == ord('j'):
-            frame_idx += 1658  # jump to specific frame (for testing)
+            frame_idx += 1680 #2930  # jump to specific frame (for testing)
             ret, frame = seek_and_display_frame(cap, frame_idx)
         elif key == ord('x'):
             frame_idx += 1  # forward 1 frame
