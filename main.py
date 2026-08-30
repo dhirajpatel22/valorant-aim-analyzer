@@ -13,6 +13,32 @@ init(autoreset=True)  # Automatically reset color after each print
 reader = easyocr.Reader(['en'], gpu=True)
 candidate_id_counter = count()  # Global counter for unique IDs
 
+def get_best_candidate_text(kill_candidate):
+    valid_rows = [
+        row for row in kill_candidate.rows
+        if row.text
+    ]
+
+    if not valid_rows:
+        return "", 0, None
+
+    best_row = max(
+        valid_rows,
+        key=lambda row: sum(
+            part.blur_score or 0
+            for part in row.parts
+        )
+    )
+
+    score = sum(
+        part.blur_score or 0
+        for part in best_row.parts
+    )
+
+    text = " ".join(best_row.text)
+
+    return text, score, best_row
+
 @dataclass
 class KillFeedDetection:
     """Represents a single OCR detection in the kill feed."""
@@ -107,8 +133,9 @@ class KillCandidate:
     ID: int = field(default_factory=lambda: next(candidate_id_counter))  # Unique identifier for the kill candidate
 
     def __repr__(self):
+        text, score, best_row = get_best_candidate_text(self)
         return (
-            f"KillCandidate(ID = {self.ID}) | text = {self.rows[-1].text} | frames=({self.first_frame}-{self.last_frame}) | "
+            f"KillCandidate(ID = {self.ID}) | text = {text}, score={score:.3f} | frames=({self.first_frame}-{self.last_frame}) | "
             f"y={self.y} | past_text = {self.rows[-2].text if len(self.rows) > 1 else 'N/A'}"
         )
 
@@ -558,7 +585,6 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
                 
             else: 
-
                 kill_feed = group_rows(ocr_detections)
 
                 print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
@@ -578,7 +604,8 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                             break
                         elif y_difference > 20: # Different y 
                             new_text = " ".join(row.text).lower().strip()
-                            existing_text = " ".join(kill_candidate.rows[-1].text).lower().strip() #take last row of candidate text for now
+                            existing_text, score, best_row = get_best_candidate_text(kill_candidate)
+                            existing_text = existing_text.lower().strip()
 
                             text_match = False
 
@@ -640,8 +667,8 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                                         
                         if not user_name:
                             continue
-
-                        leftmost_part = min(kill_candidate.rows[-1].parts, key=lambda p: p.x)
+                        _, _, best_row = get_best_candidate_text(kill_candidate)
+                        leftmost_part = min(best_row.parts, key=lambda p: p.x)
 
                         if not is_user_name_match(leftmost_part.text, user_name): #Does user name match the leftmost part of the kill candidate row? If not, reject it.
                             print(
