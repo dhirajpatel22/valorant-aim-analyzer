@@ -635,7 +635,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                         kill_candidates.append(new_kill_candidate)
 
                 for kill_candidate in kill_candidates[:]:  # Iterate over a copy of the list to not modify it while iterating
-                    if (frame_idx - kill_candidate.first_frame) / fps > 5: # If the candidate is older than 5.6 seconds
+                    if (frame_idx - kill_candidate.first_frame) / fps > 5: # If the candidate is older than 5 seconds
                         print(f"{Fore.RED}Kill candidate expired: {kill_candidate}")
                                         
                         if not user_name:
