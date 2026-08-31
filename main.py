@@ -14,6 +14,7 @@ reader = easyocr.Reader(['en'], gpu=True)
 candidate_id_counter = count()  # Global counter for unique IDs
 
 def get_best_candidate_text(kill_candidate):
+    """Returns the best text from a KillCandidate based on the highest blur score. Returns a tuple of (text, score, best_row)."""
     valid_rows = [
         row for row in kill_candidate.rows
         if row.text
@@ -146,6 +147,8 @@ class KillCandidate:
         )"""
 
 def seek_and_display_frame(cap, frame_idx):
+    """Seeks to a specific frame in the video and displays it. Returns a tuple (ret, frame) where ret is a boolean 
+    indicating success and frame is the retrieved frame."""
     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
     ret, frame = cap.read()
 
@@ -318,6 +321,8 @@ def preprocess_kill_feed(crop):
     return cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)  # Resize to double the size for better OCR accuracy
 
 def is_sharp_enough(crop, threshold=80):
+    """Calculates the sharpness of the cropped image using the variance of the Laplacian. Returns a tuple (score, is_sharp) where score is the calculated 
+    sharpness score and is_sharp is a boolean indicating if the score meets or exceeds the threshold."""
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
     score = cv2.Laplacian(gray, cv2.CV_64F).var()
     return score, score >= threshold
@@ -408,9 +413,11 @@ def group_rows(detections, y_threshold=10):
     return kill_feed
 
 def normalize_text(text):
+    """Normalizes the text by removing non-alphanumeric characters and converting to lowercase. Returns the normalized text."""
     return re.sub(r'[^a-zA-Z0-9]', '', text).lower()
 
 def is_user_name_match(detected_text, user_name):
+    """Checks if the detected text matches the user's in-game name, allowing for minor OCR errors. Returns True if there's a match, otherwise False."""
     detected = normalize_text(detected_text)
     expected = normalize_text(user_name)
 
@@ -461,6 +468,7 @@ def is_user_name_match(detected_text, user_name):
     return similarity >= 0.70
 
 def is_bad_kill_feed_frame(detections, threshold=10):
+    """Determines if the kill feed frame is bad based on the blur scores of the detections. Returns True if the frame is considered bad, otherwise False."""
     if not detections:
         return False
 
@@ -473,6 +481,8 @@ def is_bad_kill_feed_frame(detections, threshold=10):
     return low_blur_count >= 2
 
 def remove_kill_streak_detection(row):
+    """Removes kill streak detections (like "III", "IV", etc.) from the beginning of a KillFeedRow if present. 
+    Modifies the row in place. Returns the modified row."""
     kill_streaks = {"III", "IV", "V", "VI", "VII"}
 
     if len(row.parts) > 2:
