@@ -591,7 +591,6 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
                 # Update kill_candidates list based on the current frame's kill feed
                 for row in kill_feed.rows:
-
                     matched = False
                     
                     for kill_candidate in kill_candidates:
@@ -652,6 +651,8 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                                     matched = False
                                     
                     if not matched:
+                        if len(row.parts) < 2: # Don't create a new kill candidate from a single OCR detection, single detections are more likely to be OCR noise / gun-icon artifacts.
+                            continue
                         new_kill_candidate = KillCandidate(
                                                 rows=[row],
                                                 x=row.x,
@@ -711,7 +712,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
         # for testing
         elif key == ord('j'):
-            frame_idx += 1680 #2930  # jump to specific frame (for testing)
+            frame_idx += 2930 #3850 #1680   # jump to specific frame (for testing)
             ret, frame = seek_and_display_frame(cap, frame_idx)
         elif key == ord('x'):
             frame_idx += 1  # forward 1 frame
