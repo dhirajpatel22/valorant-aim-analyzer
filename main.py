@@ -135,9 +135,15 @@ class KillCandidate:
     def __repr__(self):
         text, score, best_row = get_best_candidate_text(self)
         return (
+                    f"KillCandidate(ID = {self.ID}) | text = {best_row.text}, score={score:.3f} | frames=({self.first_frame}-{self.last_frame}) | "
+                    f"y={self.y}"
+                )
+
+        #print past text as well for debugging
+        """return (
             f"KillCandidate(ID = {self.ID}) | text = {best_row.text}, score={score:.3f} | frames=({self.first_frame}-{self.last_frame}) | "
             f"y={self.y} | past_text = {self.rows[-2].text if len(self.rows) > 1 else 'N/A'}"
-        )
+        )"""
 
 def seek_and_display_frame(cap, frame_idx):
     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
@@ -466,6 +472,20 @@ def is_bad_kill_feed_frame(detections, threshold=10):
     # don't trust this frame.
     return low_blur_count >= 2
 
+def remove_kill_streak_detection(row):
+    kill_streaks = {"III", "IV", "V", "VI", "VII"}
+
+    if len(row.parts) > 2:
+        first_detection = row.parts[0]
+        text = first_detection.text.strip().upper()
+
+        if text in kill_streaks:
+            row.parts.pop(0)
+
+    row.text = [part.text for part in row.parts]
+
+    return row
+
 def process_valorant_replay(video_path, enemy_model_path, head_model_path):
    
     # Load trained models (the best.pt file)
@@ -591,6 +611,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
                 # Update kill_candidates list based on the current frame's kill feed
                 for row in kill_feed.rows:
+                    remove_kill_streak_detection(row)
                     matched = False
                     
                     for kill_candidate in kill_candidates:
@@ -712,7 +733,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
         # for testing
         elif key == ord('j'):
-            frame_idx += 2930 #3850 #1680   # jump to specific frame (for testing)
+            frame_idx += 1680 #2930 #3850    # jump to specific frame (for testing)
             ret, frame = seek_and_display_frame(cap, frame_idx)
         elif key == ord('x'):
             frame_idx += 1  # forward 1 frame
