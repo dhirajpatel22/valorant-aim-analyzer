@@ -135,7 +135,7 @@ class KillCandidate:
     def __repr__(self):
         text, score, best_row = get_best_candidate_text(self)
         return (
-            f"KillCandidate(ID = {self.ID}) | text = {text}, score={score:.3f} | frames=({self.first_frame}-{self.last_frame}) | "
+            f"KillCandidate(ID = {self.ID}) | text = {best_row.text}, score={score:.3f} | frames=({self.first_frame}-{self.last_frame}) | "
             f"y={self.y} | past_text = {self.rows[-2].text if len(self.rows) > 1 else 'N/A'}"
         )
 
@@ -578,7 +578,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
             ocr_detections = ocr_kill_feed(frame, frame_idx)
 
             if is_bad_kill_feed_frame(ocr_detections):
-                print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Skipping frame due to poor OCR quality.")
+                print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Skipping frame due to low blur score.")
 
                 kill_feed = group_rows(ocr_detections)
                 print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
