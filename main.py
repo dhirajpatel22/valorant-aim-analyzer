@@ -307,7 +307,7 @@ def display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshai
 def crop_kill_frame(frame):
     """ Crops the frame to focus on the kill feed area. Returns the cropped frame and the top-left coordinates of the crop in the original frame. """
     h, w, _ = frame.shape
-    x1 = int(w * 0.78)
+    x1 = int(w * 0.64)
     y1 = int(h * 0.08)
     x2 = w - 20
     y2 = int(h * 0.35)
@@ -612,8 +612,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
                 kill_feed = group_rows(ocr_detections)
                 print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
-
-                
+     
             else: 
                 kill_feed = group_rows(ocr_detections)
 
@@ -743,7 +742,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
         # for testing
         elif key == ord('j'):
-            frame_idx += 1680 #2930 #3850    # jump to specific frame (for testing)
+            frame_idx += 300 #542 #1680 #2930 #3850    # jump to specific frame (for testing)
             ret, frame = seek_and_display_frame(cap, frame_idx)
         elif key == ord('x'):
             frame_idx += 1  # forward 1 frame
