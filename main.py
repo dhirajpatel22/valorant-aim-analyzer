@@ -496,6 +496,12 @@ def remove_kill_streak_detection(row):
 
     return row
 
+def shift_kill_candidates_up(kill_candidates, moved_candidate, shift):
+    """Shift all kill candidates below the moved candidate upward."""
+    for candidate in kill_candidates:
+        if candidate.ID != moved_candidate.ID and candidate.y > moved_candidate.y:
+            candidate.y -= shift
+
 def process_valorant_replay(video_path, enemy_model_path, head_model_path):
    
     # Load trained models (the best.pt file)
@@ -662,13 +668,24 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                                     text_match = True
                                     #print(f"{Fore.GREEN}Fuzzy match found: {new_text} ~ {existing_text}")
 
-                            if text_match == True: # Same text
-                                if row.y < kill_candidate.y: # New row is above the candidate
+                            if text_match == True:
+                                if row.y < kill_candidate.y:
                                     print(f"{Fore.BLUE}Text match found AND row above kill candidate. KC ID: {kill_candidate.ID} row:{row.text}")
+
+                                    old_y = kill_candidate.y
+                                    shift = old_y - row.y
+
                                     kill_candidate.rows.append(row)
                                     kill_candidate.last_frame = frame_idx
-                                    kill_candidate.y = row.y  # Update the y-coordinate to the new row's y
-                                    
+                                    kill_candidate.y = row.y
+
+                                    # Move all rows below this one upward by the same amount
+                                    shift_kill_candidates_up(
+                                        kill_candidates,
+                                        kill_candidate,
+                                        shift
+                                    )
+
                                     matched = True
                                     break
                                     
@@ -742,7 +759,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
         # for testing
         elif key == ord('j'):
-            frame_idx += 300 #542 #1680 #2930 #3850    # jump to specific frame (for testing)
+            frame_idx += 300 #1680 #542 #2930 #3850    # jump to specific frame (for testing)
             ret, frame = seek_and_display_frame(cap, frame_idx)
         elif key == ord('x'):
             frame_idx += 1  # forward 1 frame
