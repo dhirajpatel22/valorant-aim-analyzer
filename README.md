@@ -2,7 +2,7 @@
 
 An AI-powered computer vision application that analyzes Valorant gameplay footage and provides personalized insights on crosshair placement, aiming mechanics, and reaction time.
 
-> 🚧 **Project Status:** Early development. Features and documentation are actively being improved.
+> 🚧 **Project Status:** In development. Features and documentation are actively being improved.
 
 ---
 
@@ -34,6 +34,14 @@ This project is being developed as a portfolio project to explore:
 - Training a custom computer vision model to identify enemy head locations.
 - Uses detected head positions to evaluate crosshair placement accuracy (vertical crosshair accuracy)
 
+✅ **Kill Detection**
+- Implemented OCR-based detection of the Valorant kill feed using EasyOCR.
+- Detects and groups individual OCR text detections into kill feed rows.
+- Added fuzzy string matching to handle OCR inconsistencies and duplicate detections across frames.
+- Tracks potential kill events across multiple frames using kill candidates, rather than treating every OCR detection as a new kill.
+- Uses the position and timing of detections to determine whether a newly detected row corresponds to an existing candidate.
+- Candidate expiration and confirmation logic to reliably determine when a kill event has disappeared from the feed and should be finalized.
+
 ---
 
 ## Features In Progress
@@ -41,14 +49,13 @@ This project is being developed as a portfolio project to explore:
 🚧 **Aim Analysis**
 - Measuring how quickly and accurately the player moves their crosshair onto targets.
 - Analyzing flicks, tracking, and micro-adjustments.
-- Compute crosshair placement score & measure reaction time, draw crosshair path on screen 
+- Compute crosshair placement score & measure reaction time
+- Exporting/downloading an annotated version of the video with detection boxes and analysis overlays for easy review. 
 
 ---
 
 ## Future Features
 
-- Kill detection and event tracking
-- Reaction time measurement
 - Headshot accuracy analysis
 - Crosshair placement scoring
 - Aim improvement recommendations
@@ -93,6 +100,14 @@ valorant-aim-analyzer/
 ├── yolo11n.pt                  # Pre-trained YOLO11 Nano model used for transfer learning
 └── README.md   
 ```
+
+## Dataset
+I combinded various datatsets on Roboflow into one set to give my model as many training images as possible.
+
+* Enemy model: https://universe.roboflow.com/dhiraj-patel/valorant-enemy-detection-fcgle
+* Head model: https://universe.roboflow.com/dhiraj-patel/valorant-head-detection-g8rzf
+* Enemy & head model: https://universe.roboflow.com/dhiraj-patel/valorant-enemy-head-detection
+
 
 ## Disclaimer
 
