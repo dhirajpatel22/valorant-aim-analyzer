@@ -153,7 +153,7 @@ def seek_and_display_frame(cap, frame_idx):
     ret, frame = cap.read()
 
     if ret:
-        cv2.imshow('Valorant AI Coach - Vision Test', frame)
+        cv2.imshow('Valorant Aim Analyzer', frame)
 
     return ret, frame
 
@@ -741,7 +741,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
 
             # Display the frame on screen
-            cv2.imshow('Valorant AI Coach - Vision Test', frame)
+            cv2.imshow('Valorant Aim Analyzer', frame)
             frame_idx += step  # Move to the next frame
 
         key = cv2.waitKey(0 if paused else 1) & 0xFF
