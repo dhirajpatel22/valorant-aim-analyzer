@@ -8,6 +8,7 @@ from typing import List
 import re
 from colorama import Fore, Style, init
 from itertools import count
+import os
 
 init(autoreset=True)  # Automatically reset color after each print
 reader = easyocr.Reader(['en'], gpu=True)
@@ -603,6 +604,28 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
     if fps == 0:
         print("Error: Could not retrieve FPS from video.")
         return
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+
+    base_path = "output/output"
+    extension = ".mp4"
+
+    output_path = base_path + extension
+    counter = 1
+    # If the output file already exists, append a number to the filename to avoid overwriting
+    while os.path.exists(output_path):
+        output_path = f"{base_path}_{counter}{extension}"
+        counter += 1
+
+    out = cv2.VideoWriter(
+        output_path,
+        fourcc,
+        fps,
+        (width, height)
+    )
+
     
     # Loop through the video frame by frame
     while True:
@@ -739,7 +762,8 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
                 print(f"Frame {frame_idx}: User Kills: {user_kills} \n          Kill Candidates: {kill_candidates}")
 
-
+            #write frames to output
+            out.write(frame)
             # Display the frame on screen
             cv2.imshow('Valorant Aim Analyzer', frame)
             frame_idx += step  # Move to the next frame
@@ -759,7 +783,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
         # for testing
         elif key == ord('j'):
-            frame_idx += 1680 #300 #542 #2930 #3850    # jump to specific frame (for testing)
+            frame_idx +=  300 # 1680  # 542 # 2930 # 3850    # jump to specific frame (for testing)
             ret, frame = seek_and_display_frame(cap, frame_idx)
         elif key == ord('x'):
             frame_idx += 1  # forward 1 frame
@@ -776,7 +800,9 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
     # Clean up when done
     cap.release()
+    out.release()
     cv2.destroyAllWindows()
+    print(f"Saving to: {output_path}")
 
 if __name__ == '__main__':
     MY_VIDEO = "input/test-clip-4.mp4"
