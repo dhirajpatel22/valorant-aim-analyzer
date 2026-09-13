@@ -543,7 +543,7 @@ def match_row_to_kill_candidate(row, kill_candidates, frame_idx):
 
             if text_match == True:
                 if row.y < kill_candidate.y:
-                    print(f"{Fore.BLUE}Text match found AND row above kill candidate. KC ID: {kill_candidate.ID} row:{row.text}")
+                    print(f"{Fore.BLUE}KILL FEED MOVED UP: Text match found AND row above kill candidate. KC ID: {kill_candidate.ID} row:{row.text}")
 
                     old_y = kill_candidate.y
                     shift = old_y - row.y
@@ -717,10 +717,10 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                 ocr_detections = ocr_kill_feed(frame, frame_idx)
 
                 if is_bad_kill_feed_frame(ocr_detections):
-                    print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Skipping frame due to low blur score.")
+                    #print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Skipping frame due to low blur score.")
 
                     kill_feed = group_rows(ocr_detections)
-                    print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
+                    #print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
         
                 else: 
                     kill_feed = group_rows(ocr_detections)
@@ -746,7 +746,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
                     for kill_candidate in kill_candidates[:]:  # Iterate over a copy of the list to not modify it while iterating
                         if (frame_idx - kill_candidate.first_frame) / fps > 5: # If the candidate is older than 5 seconds
-                            print(f"{Fore.RED}Kill candidate expired: {kill_candidate}")
+                            print(f"{Fore.YELLOW}Kill candidate expired: {kill_candidate}")
                                             
                             if not user_name:
                                 continue
@@ -761,18 +761,15 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                                 )
                                 kill_candidates.remove(kill_candidate)
                                 continue
-                            print(
-                                f"{Fore.GREEN}ACCEPTED USERNAME: "
-                                f"detected={leftmost_part.text!r}, "
-                                f"expected={user_name!r}"
-                                )
+                            #print(f"{Fore.GREEN}ACCEPTED USERNAME: "f"detected={leftmost_part.text!r}, "f"expected={user_name!r}")
                             
                             user_kills.append(kill_candidate)
                             print(f"{Fore.GREEN}NEW KILL: {kill_candidate}")
 
                             kill_candidates.remove(kill_candidate)
 
-                    print(f"Frame {frame_idx}: User Kills: {user_kills} \n          Kill Candidates: {kill_candidates}")
+                    if frame_idx % 60 == 0:  # Print every 60 frames
+                        print(f"Frame {frame_idx}: User Kills: {user_kills} \n          Kill Candidates: {kill_candidates}")
 
             #write frames to output
             out.write(frame)
