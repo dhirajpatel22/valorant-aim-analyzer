@@ -313,7 +313,7 @@ def crop_kill_frame(frame):
     x2 = w - 20
     y2 = int(h * 0.35)
 
-    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2) # Draw rectangle on original frame for visualization
+    #cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2) # Draw rectangle on original frame for visualization
 
     return frame[y1:y2, x1:x2], (x1, y1)
 
@@ -372,7 +372,7 @@ def ocr_kill_feed(frame, frame_idx):
         x2 = int(box[2][0] / scale) + ox
         y2 = int(box[2][1] / scale) + oy
         
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2) 
+        #cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2) 
 
     return detections
 
@@ -607,6 +607,10 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+    ENEMY_INTERVAL = 1
+    HEAD_INTERVAL = 3
+    OCR_INTERVAL = 4
+
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
     base_path = "output/output"
@@ -626,7 +630,10 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
         (width, height)
     )
 
-    
+    last_enemy_results = None
+    last_head_results = None
+    last_ocr_detections = []
+
     # Loop through the video frame by frame
     while True:
 
@@ -641,8 +648,10 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
             
             (crosshair_x, crosshair_y) = draw_crosshair(frame)
 
-            # Run inference (detection) on the current frame
-            enemy_results = enemy_model(frame, conf=0.5, verbose=False)
+            # Run inference (detection) on the  frame
+            if frame_idx % ENEMY_INTERVAL == 0:
+                last_enemy_results = enemy_model(frame, conf=0.5, verbose=False)
+            enemy_results = last_enemy_results
             
             # Process the results and draw boxes
             # The 'enemy_results' object contains all the bounding box coordinates for the enemy model
@@ -662,25 +671,27 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                         continue  # Skip if the cropped region is empty
 
                     draw_enemy(frame, box, enemy_class_names)
+ 
+                    if frame_idx % HEAD_INTERVAL == 0:
+                        head_results = head_model(cropped, conf=0.3, imgsz= 320, verbose=False)
 
-                    head_results = head_model(cropped, conf=0.3, imgsz= 320, verbose=False)
-                    
-                    head_found = False
+                        head_found = False
+                        best_head_box = None
+                        best_head_conf = 0.0
 
-                    best_head_box = None
-                    best_head_conf = 0.0
-
-                    for hr in head_results:
-                        for head_box in hr.boxes:
-                            conf = float(head_box.conf[0])
-                            if conf > best_head_conf:
-                                best_head_conf = conf
-                                best_head_box = head_box
+                        for hr in head_results:
+                            for head_box in hr.boxes:
+                                conf = float(head_box.conf[0])
+                                if conf > best_head_conf:
+                                    best_head_conf = conf
+                                    best_head_box = head_box
                             
-                    #If head detected 
-                    if best_head_box is not None:
-                        head_found = True
-                        (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_head(frame, best_head_box, x1, y1, x2, y2)
+                        #If head detected 
+                        if best_head_box is not None:
+                            head_found = True
+                            (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_head(frame, best_head_box, x1, y1, x2, y2)
+                    else:
+                        head_found = False
 
                     if not head_found:
                         (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_estimate_head(frame, (x1, y1, x2, y2))
@@ -702,65 +713,66 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                     # Calculate the vertical crosshair error & display it on the frame
                     display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
 
-            ocr_detections = ocr_kill_feed(frame, frame_idx)
+            if frame_idx % OCR_INTERVAL == 0:
+                ocr_detections = ocr_kill_feed(frame, frame_idx)
 
-            if is_bad_kill_feed_frame(ocr_detections):
-                print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Skipping frame due to low blur score.")
+                if is_bad_kill_feed_frame(ocr_detections):
+                    print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Skipping frame due to low blur score.")
 
-                kill_feed = group_rows(ocr_detections)
-                print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
-     
-            else: 
-                kill_feed = group_rows(ocr_detections)
+                    kill_feed = group_rows(ocr_detections)
+                    print(f"{Fore.LIGHTMAGENTA_EX}Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
+        
+                else: 
+                    kill_feed = group_rows(ocr_detections)
 
-                #print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
+                    #print(f"Frame {frame_idx}: Detected Kill Feed Rows: {kill_feed}")
 
-                # Update kill_candidates list based on the current frame's kill feed
-                for row in kill_feed.rows:
-                    remove_kill_streak_detection(row)
-                    matched = match_row_to_kill_candidate(row, kill_candidates, frame_idx)    
-                                    
-                    if not matched:
-                        if len(row.parts) < 2: # Don't create a new kill candidate from a single OCR detection, single detections are more likely to be OCR noise / gun-icon artifacts.
-                            continue
-                        new_kill_candidate = KillCandidate(
-                                                rows=[row],
-                                                x=row.x,
-                                                y=row.y,
-                                                first_frame=frame_idx,
-                                                last_frame=frame_idx
-                                            )
-                        kill_candidates.append(new_kill_candidate)
-
-                for kill_candidate in kill_candidates[:]:  # Iterate over a copy of the list to not modify it while iterating
-                    if (frame_idx - kill_candidate.first_frame) / fps > 5: # If the candidate is older than 5 seconds
-                        print(f"{Fore.RED}Kill candidate expired: {kill_candidate}")
+                    # Update kill_candidates list based on the current frame's kill feed
+                    for row in kill_feed.rows:
+                        remove_kill_streak_detection(row)
+                        matched = match_row_to_kill_candidate(row, kill_candidates, frame_idx)    
                                         
-                        if not user_name:
-                            continue
-                        _, _, best_row = get_best_candidate_text(kill_candidate)
-                        leftmost_part = min(best_row.parts, key=lambda p: p.x)
+                        if not matched:
+                            if len(row.parts) < 2: # Don't create a new kill candidate from a single OCR detection, single detections are more likely to be OCR noise / gun-icon artifacts.
+                                continue
+                            new_kill_candidate = KillCandidate(
+                                                    rows=[row],
+                                                    x=row.x,
+                                                    y=row.y,
+                                                    first_frame=frame_idx,
+                                                    last_frame=frame_idx
+                                                )
+                            kill_candidates.append(new_kill_candidate)
 
-                        if not is_user_name_match(leftmost_part.text, user_name): #Does user name match the leftmost part of the kill candidate row? If not, reject it.
+                    for kill_candidate in kill_candidates[:]:  # Iterate over a copy of the list to not modify it while iterating
+                        if (frame_idx - kill_candidate.first_frame) / fps > 5: # If the candidate is older than 5 seconds
+                            print(f"{Fore.RED}Kill candidate expired: {kill_candidate}")
+                                            
+                            if not user_name:
+                                continue
+                            _, _, best_row = get_best_candidate_text(kill_candidate)
+                            leftmost_part = min(best_row.parts, key=lambda p: p.x)
+
+                            if not is_user_name_match(leftmost_part.text, user_name): #Does user name match the leftmost part of the kill candidate row? If not, reject it.
+                                print(
+                                    f"{Fore.RED}REJECTED USERNAME: "
+                                    f"detected={leftmost_part.text!r}, "
+                                    f"expected={user_name!r}"
+                                )
+                                kill_candidates.remove(kill_candidate)
+                                continue
                             print(
-                                f"{Fore.RED}REJECTED USERNAME: "
+                                f"{Fore.GREEN}ACCEPTED USERNAME: "
                                 f"detected={leftmost_part.text!r}, "
                                 f"expected={user_name!r}"
-                            )
+                                )
+                            
+                            user_kills.append(kill_candidate)
+                            print(f"{Fore.GREEN}NEW KILL: {kill_candidate}")
+
                             kill_candidates.remove(kill_candidate)
-                            continue
-                        print(
-                            f"{Fore.GREEN}ACCEPTED USERNAME: "
-                            f"detected={leftmost_part.text!r}, "
-                            f"expected={user_name!r}"
-                            )
-                        
-                        user_kills.append(kill_candidate)
-                        print(f"{Fore.GREEN}NEW KILL: {kill_candidate}")
 
-                        kill_candidates.remove(kill_candidate)
-
-                print(f"Frame {frame_idx}: User Kills: {user_kills} \n          Kill Candidates: {kill_candidates}")
+                    print(f"Frame {frame_idx}: User Kills: {user_kills} \n          Kill Candidates: {kill_candidates}")
 
             #write frames to output
             out.write(frame)
@@ -783,7 +795,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
         # for testing
         elif key == ord('j'):
-            frame_idx +=  300 # 1680  # 542 # 2930 # 3850    # jump to specific frame (for testing)
+            frame_idx +=  2930 #1680 #300 # 542 #  # 3850    # jump to specific frame (for testing)
             ret, frame = seek_and_display_frame(cap, frame_idx)
         elif key == ord('x'):
             frame_idx += 1  # forward 1 frame
