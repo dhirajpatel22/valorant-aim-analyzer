@@ -319,7 +319,7 @@ def crop_kill_frame(frame):
 
 def preprocess_kill_feed(crop):
     """Preprocesses the cropped kill feed for OCR. Returns a binary image suitable for OCR."""
-    return cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)  # Resize to double the size for better OCR accuracy
+    return cv2.resize(crop, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)  # Resize to 2x size for better OCR accuracy
 
 def is_sharp_enough(crop, threshold=80):
     """Calculates the sharpness of the cropped image using the variance of the Laplacian. Returns a tuple (score, is_sharp) where score is the calculated 
@@ -344,7 +344,7 @@ def ocr_kill_feed(frame, frame_idx):
             continue
         # box is 4 points, use top left y to group rows
         
-        scale = 3.0
+        scale = 2.0
         y = int(box[0][1] / scale) + oy  # y-coordinate of the top-left corner
         x = int(box[0][0] / scale) + ox  # x-coordinate of the top-left corner
 
@@ -793,7 +793,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
         # for testing
         elif key == ord('j'):
-            frame_idx +=  2930 #1680 #300 # 542 #  # 3850    # jump to specific frame (for testing)
+            frame_idx += 1680 #2930 # #300 # 542 #  # 3850    # jump to specific frame (for testing)
             ret, frame = seek_and_display_frame(cap, frame_idx)
         elif key == ord('x'):
             frame_idx += 1  # forward 1 frame
