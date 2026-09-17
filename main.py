@@ -1,5 +1,4 @@
 import cv2
-from sympy import fps
 from ultralytics import YOLO
 import easyocr
 from difflib import SequenceMatcher 
@@ -9,6 +8,16 @@ import re
 from colorama import Fore, Style, init
 from itertools import count
 import os
+import torch
+
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+elif torch.backends.mps.is_available():
+    DEVICE = "mps"
+else:
+    DEVICE = "cpu"
+
+print(f"Using device: {DEVICE}")
 
 init(autoreset=True)  # Automatically reset color after each print
 reader = easyocr.Reader(['en'], gpu=True)
@@ -651,7 +660,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
             # Run inference (detection) on the  frame
             if frame_idx % ENEMY_INTERVAL == 0:
-                last_enemy_results = enemy_model(frame, conf=0.5, verbose=False)
+                last_enemy_results = enemy_model(frame, conf=0.5, verbose=False, device=DEVICE)
             enemy_results = last_enemy_results
             
             # Process the results and draw boxes
@@ -674,7 +683,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
                     draw_enemy(frame, box, enemy_class_names)
  
                     if frame_idx % HEAD_INTERVAL == 0:
-                        head_results = head_model(cropped, conf=0.3, imgsz= 320, verbose=False)
+                        head_results = head_model(cropped, conf=0.3, imgsz= 320, verbose=False, device=DEVICE)
 
                         head_found = False
                         best_head_box = None
@@ -815,7 +824,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
     print(f"Saving to: {output_path}")
 
 if __name__ == '__main__':
-    MY_VIDEO = "input/test-clip-4.mp4"
+    MY_VIDEO = "input/test-clip-1.mp4"
     
     MY_ENEMY_MODEL = "runs/detect/valorant_coach/enemy_model_v1/weights/best.pt"
     MY_HEAD_MODEL = "runs/detect/valorant_coach/head_model_v1/weights/best.pt"
