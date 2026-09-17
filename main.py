@@ -372,7 +372,7 @@ def ocr_kill_feed(frame, frame_idx):
         x2 = int(box[2][0] / scale) + ox
         y2 = int(box[2][1] / scale) + oy
         
-        #cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2) 
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2) 
 
     return detections
 
@@ -543,7 +543,8 @@ def match_row_to_kill_candidate(row, kill_candidates, frame_idx):
 
             if text_match == True:
                 if row.y < kill_candidate.y:
-                    print(f"{Fore.BLUE}KILL FEED MOVED UP: Text match found AND row above kill candidate. KC ID: {kill_candidate.ID} row:{row.text}")
+                    print(f"{Fore.BLUE}KILL FEED MOVED UP")
+                    #print(f"{Fore.BLUE}KILL FEED MOVED UP: Text match found AND row above kill candidate. KC ID: {kill_candidate.ID} row:{row.text}")
 
                     old_y = kill_candidate.y
                     shift = old_y - row.y
@@ -609,7 +610,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
     ENEMY_INTERVAL = 1
     HEAD_INTERVAL = 3
-    OCR_INTERVAL = 4
+    OCR_INTERVAL = 8
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
@@ -768,7 +769,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
                             kill_candidates.remove(kill_candidate)
 
-                    if frame_idx % 60 == 0:  # Print every 60 frames
+                    if frame_idx % 80 == 0:  # Print every 80 frames (make sure this is divisible by OCR_INTERVAL to avoid skipping prints)
                         print(f"Frame {frame_idx}: User Kills: {user_kills} \n          Kill Candidates: {kill_candidates}")
 
             #write frames to output
