@@ -610,7 +610,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
     ENEMY_INTERVAL = 1
     HEAD_INTERVAL = 3
-    OCR_INTERVAL = 8
+    OCR_INTERVAL = 10
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
@@ -769,7 +769,7 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
 
                             kill_candidates.remove(kill_candidate)
 
-                    if frame_idx % 80 == 0:  # Print every 80 frames (make sure this is divisible by OCR_INTERVAL to avoid skipping prints)
+                    if frame_idx % 100 == 0:  # Print every 100 frames (make sure this is divisible by OCR_INTERVAL to avoid skipping prints)
                         print(f"Frame {frame_idx}: User Kills: {user_kills} \n          Kill Candidates: {kill_candidates}")
 
             #write frames to output
