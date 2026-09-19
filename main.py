@@ -666,62 +666,67 @@ def process_valorant_replay(video_path, enemy_model_path, head_model_path):
             # Process the results and draw boxes
             # The 'enemy_results' object contains all the bounding box coordinates for the enemy model
             for r in enemy_results:
-                boxes = r.boxes
-                
-                closest_head = None
-                closest_head_box = None
-                closest_distance = float('inf')
+                        boxes = r.boxes
 
-                for box in boxes:
-                    # Get the coordinates (x1, y1, x2, y2)
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        #Find the enemy whose estimated head is closest to the crosshair
+                        closest_enemy = None
+                        closest_distance = float("inf")
 
-                    cropped = frame[y1:y2, x1:x2] # Crop the detected enemy region for head detection
-                    if cropped.size == 0:
-                        continue  # Skip if the cropped region is empty
+                        for box in boxes:
+                            x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                    draw_enemy(frame, box, enemy_class_names)
- 
-                    if frame_idx % HEAD_INTERVAL == 0:
-                        head_results = head_model(cropped, conf=0.3, imgsz= 320, verbose=False, device=DEVICE)
+                            # Estimate head position of enemy box
+                            enemy_width = x2 - x1
+                            enemy_height = y2 - y1
 
-                        head_found = False
-                        best_head_box = None
-                        best_head_conf = 0.0
+                            head_center_x = x1 + enemy_width // 2
+                            head_center_y = y1 + int(enemy_height * 0.13)
 
-                        for hr in head_results:
-                            for head_box in hr.boxes:
-                                conf = float(head_box.conf[0])
-                                if conf > best_head_conf:
-                                    best_head_conf = conf
-                                    best_head_box = head_box
-                            
-                        #If head detected 
-                        if best_head_box is not None:
-                            head_found = True
-                            (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_head(frame, best_head_box, x1, y1, x2, y2)
-                    else:
-                        head_found = False
+                            # Squared distance
+                            distance = ((head_center_x - crosshair_x) ** 2 +(head_center_y - crosshair_y) ** 2)
 
-                    if not head_found:
-                        (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_estimate_head(frame, (x1, y1, x2, y2))
+                            if distance < closest_distance:
+                                closest_distance = distance
+                                closest_enemy = (box, x1, y1, x2, y2)
 
-                    #Find closest head to crosshair
-                    distance = ((head_center_x - crosshair_x)**2 + 
-                    (head_center_y - crosshair_y)**2) ** 0.5
-                    
-                    #Keep the closest head
-                    if distance < closest_distance:
-                        closest_distance = distance
-                        closest_head = (head_center_x, head_center_y)
-                        closest_head_box = (hx1, hy1, hx2, hy2)
+                        # Draw all enemy boxes
+                        for box in boxes:
+                            draw_enemy(frame, box, enemy_class_names)
 
-                if closest_head is not None:
-                    head_center_x, head_center_y = closest_head
-                    hx1, hy1, hx2, hy2 = closest_head_box
+                        # Only run head detection on the closest enemy
+                        if closest_enemy is not None:
 
-                    # Calculate the vertical crosshair error & display it on the frame
-                    display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)         
+                            box, x1, y1, x2, y2 = closest_enemy
+                            cropped = frame[y1:y2, x1:x2]
+
+                            if cropped.size != 0:
+                                if frame_idx % HEAD_INTERVAL == 0:
+
+                                    head_results = head_model(cropped,conf=0.3,imgsz=320, verbose=False, device=DEVICE)
+                                    best_head_box = None
+                                    best_head_conf = 0.0
+
+                                    for hr in head_results:
+                                        for head_box in hr.boxes:
+                                            conf = float(head_box.conf[0])
+
+                                            if conf > best_head_conf:
+                                                best_head_conf = conf
+                                                best_head_box = head_box
+
+                                    if best_head_box is not None:
+                                        (head_center,head_box_coordinates) = draw_head(frame,best_head_box,x1,y1,x2,y2)
+
+                                        head_center_x, head_center_y = head_center
+                                        hx1, hy1, hx2, hy2 = head_box_coordinates
+
+                                    else:
+                                        (head_center_x,head_center_y), (hx1,hy1,hx2,hy2) = draw_estimate_head(frame,(x1, y1, x2, y2))
+                                else:
+                                    (head_center_x, head_center_y), (hx1, hy1, hx2, hy2) = draw_estimate_head(frame,(x1, y1, x2, y2))
+
+                                # Calculate aim error using closest enemy
+                                display_vertical_crosshair_error(frame, head_center_y, crosshair_x, crosshair_y, hy1, hy2)       
 
             if frame_idx % OCR_INTERVAL == 0:
                 ocr_detections = ocr_kill_feed(frame, frame_idx)
